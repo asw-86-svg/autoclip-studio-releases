@@ -277,7 +277,7 @@ object Store {
         put("source", c.source); put("originRaw", c.originRaw); put("destRaw", c.destRaw)
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
-        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended)
+        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended); put("partner", c.partner)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -289,7 +289,7 @@ object Store {
         destQueries = o.optJSONArray("dq")?.strings().orEmpty(),
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
         accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
-        autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"),
+        autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"), partner = o.optBoolean("partner"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),

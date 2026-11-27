@@ -30,6 +30,27 @@ import kotlin.math.abs
 class CallReaderService : AccessibilityService() {
 
     companion object {
+        /** 말풍선 모양 (캡처 테스트에서도 같은 모양을 쓰려고 따로 둠) */
+        fun makeBubbleView(ctx: android.content.Context): TextView {
+            fun dp(v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
+            return TextView(ctx).apply {
+                text = "출/도"
+                textSize = 13f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setLineSpacing(dp(2).toFloat(), 1f)
+                setTextColor(0xFFFFFFFF.toInt())
+                gravity = Gravity.CENTER
+                minWidth = dp(64); minHeight = dp(64)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(32).toFloat()
+                    setColor(0xEE1E6FE0.toInt())
+                    setStroke(dp(2), 0xFFFFFFFF.toInt())
+                }
+                elevation = dp(6).toFloat()
+            }
+        }
+
         @Volatile var instance: CallReaderService? = null
             private set
 
@@ -107,7 +128,7 @@ class CallReaderService : AccessibilityService() {
         bg.postAtTime(scanTask, at)
     }
 
-    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기", "단독배정확인", "프로단독배정")
+    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기", "단독배정확인", "단독배정수락", "프로단독배정")
     private val CANCEL_WORDS = listOf("취소되었습니다", "거부성공", "거부되었습니다", "배차가취소", "오더거부성공")
 
     /** 지금 콜을 '배정'으로 바꾸고 자동운행기록에 넣는다 */
@@ -237,6 +258,7 @@ class CallReaderService : AccessibilityService() {
         val lines = ArrayList<String>()
         // 출발지·도착지 이름은 빼고 시간만 (새 콜 직후엔 '시간 계산 중…')
         lines += timeLines.ifEmpty { if (expanded) listOf("시간 계산 중…") else listOf("출/도") }
+        if (c.partner) lines += "제휴"
         b.text = lines.joinToString("\n")
         b.textSize = 13f
     }
@@ -333,22 +355,7 @@ class CallReaderService : AccessibilityService() {
         if (bubbleMode == 2) return
         if (bubble != null) { applyBubbleVisibility(); return }
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val v = TextView(this).apply {
-            text = "출/도"
-            textSize = 13f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setLineSpacing(dp(2).toFloat(), 1f)
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            minWidth = dp(64); minHeight = dp(64)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(32).toFloat()
-                setColor(0xEE1E6FE0.toInt())
-                setStroke(dp(2), 0xFFFFFFFF.toInt())
-            }
-            elevation = dp(6).toFloat()
-        }
+        val v = makeBubbleView(this)
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,

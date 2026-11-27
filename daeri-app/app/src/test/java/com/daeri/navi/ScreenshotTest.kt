@@ -53,6 +53,17 @@ class ScreenshotTest {
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    @Test fun bubble() {
+        assumeTrue(System.getenv("SCREENSHOTS") == "1")
+        val v = CallReaderService.makeBubbleView(RuntimeEnvironment.getApplication())
+        v.text = "출 - 🚶5분\n출 → 도 🚗43분\n제휴"
+        v.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        v.layout(0, 0, v.measuredWidth, v.measuredHeight)
+        val bmp = Bitmap.createBitmap(v.measuredWidth + 40, v.measuredHeight + 40, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp); c.drawColor(0xFF7A2A2A.toInt()); c.translate(20f, 20f); v.draw(c)
+        File(out, "bubble.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun editor() = shot("editor", "edit", 3900) { it.putExtra("trip", 1L) }
     @Test fun newEditor() = shot("editor_new", "edit", 3900)
     @Test fun day() = shot("day", "day")

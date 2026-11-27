@@ -24,6 +24,8 @@ data class CallInfo(
     val autoDispatch: Boolean = false,
     /** 카카오 '추천가' 콜 */
     val recommended: Boolean = false,
+    /** 카카오 '제휴' 콜 */
+    val partner: Boolean = false,
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -90,7 +92,8 @@ object CallParser {
         val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
         val rec = lines.any { "추천가" in norm(it) }
-        return parseAll(lines, source, allowFreeText)?.let { if (rec) it.copy(recommended = true) else it }
+        val partner = lines.any { "제휴" in norm(it) }
+        return parseAll(lines, source, allowFreeText)?.let { it.copy(recommended = it.recommended || rec, partner = it.partner || partner) }
     }
 
     private fun parseAll(lines: List<String>, source: String, allowFreeText: Boolean): CallInfo? {

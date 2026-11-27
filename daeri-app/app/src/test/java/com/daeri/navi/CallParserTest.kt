@@ -285,6 +285,16 @@ class CallParserTest {
         assertTrue(c.recommended)
     }
 
+    @Test fun 카카오_제휴() {
+        val c = CallParser.parse(listOf("도착", "약 42분 운행", "출발", "수원시영통구 신동 신동 338",
+            "도착", "용인시처인구 원삼면사암리 SK아카데미", "제휴 | 약 42분 운행", "실제\n수익", "현금 | 확정 | 36,000", "넘기기", "단독배정 수락"),
+            "카카오T 대리", allowFreeText = false)!!
+        assertTrue(c.partner)
+        assertTrue(!c.recommended)
+        assertEquals(36000, CallParser.won(c.fare))
+        assertTrue(c.destQueries.first(), c.destQueries.first().contains("원삼면"))
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))
