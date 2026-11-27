@@ -127,6 +127,11 @@ class CallReaderService : AccessibilityService() {
                 val n = words.map { it.replace(Regex("""\s+"""), "") }
                 // 버튼 하나를 누른 경우만 (카드 전체를 누르면 안쪽에 [수락] 글자가 있어도 무시)
                 if (n.size <= 3 && n.any { w -> ACCEPT_WORDS.any { it in w } && "넘기기" !in w && "거절" !in w }) bg.post { acceptCurrent(pkg, "수락 버튼") }
+                // 카카오 콜카드는 수락 버튼 이름이 [확인]인 경우가 있다 → 방금(1분 안) 뜬 카카오 콜이 있을 때만 수락으로
+                else if ("kakao" in pkg.lowercase() && n.size <= 2 && n.any { it == "확인" }) bg.post {
+                    Store.current(this)?.takeIf { it.pkg == pkg && !it.accepted && System.currentTimeMillis() - it.capturedAt < 60_000L }
+                        ?.let { acceptCurrent(pkg, "확인 버튼") }
+                }
             }
             schedule(450L)
             return
@@ -304,17 +309,29 @@ class CallReaderService : AccessibilityService() {
         }
         Loc.current(this) { here ->
             bg.post {
-                val o = Geo.resolve(this, call.originQueries)
-                val d = Geo.resolve(this, call.destQueries)
                 val lines = ArrayList<String>()
-                if (here != null && o != null) {
-                    val t = Route.toOrigin(Route.straightKm(here, o))
-                    val min = (t.sec + 59) / 60
-                    lines += "출 - " + if (t.walk) "🚶${min}분" else "🚌약${min}분"
-                } else if (o == null) lines += "출 - 위치 못 찾음"
-                else lines += "출 - 내 위치 모름"
-                lines += if (o != null && d != null) "출 → 도 🚗${shortDur(Route.drive(this, o, d).sec)}" else "출 → 도 ${if (d == null) "도착지 못 찾음" else "-"}"
-                if (o == null || d == null) status("📍 위치 못 찾음 (${if (o == null) "출발 " + call.originQueries.firstOrNull() else "도착 " + call.destQueries.firstOrNull()}) ${Geo.lastError}")
+                // 1줄: 출발지까지 — 콜카드에 "도보 1.0km / 약 16분"이 있으면 그대로
+                val o = if (call.walkMin > 0) null else Geo.resolve(this, call.originQueries, allowArea = true)
+                when {
+                    call.walkMin in 1..Route.WALK_LIMIT_MIN -> lines += "출 - 🚶${call.walkMin}분"
+                    call.walkMin > Route.WALK_LIMIT_MIN -> lines += "출 - 🚌약${(Route.transitSec(call.walkKm / 1.25) + 59) / 60}분"
+                    here != null && o != null -> {
+                        val t = Route.toOrigin(Route.straightKm(here, o))
+                        val min = (t.sec + 59) / 60
+                        lines += "출 - " + (if (t.walk) "🚶${min}분" else "🚌약${min}분") + if (o.label.endsWith("(대략)")) "(대략)" else ""
+                    }
+                    o == null -> lines += "출 - 위치 못 찾음"
+                    else -> lines += "출 - 내 위치 모름"
+                }
+                // 2줄: 출발→도착 — 콜카드에 "약 18분 운행"이 있으면 그대로
+                if (call.driveMin > 0) lines += "출 → 도 🚗${shortDur(call.driveMin * 60)}"
+                else {
+                    val o2 = o ?: Geo.resolve(this, call.originQueries, allowArea = true)
+                    val d = Geo.resolve(this, call.destQueries, allowArea = true)
+                    lines += if (o2 != null && d != null) "출 → 도 🚗${shortDur(Route.drive(this, o2, d).sec)}" else "출 → 도 ${if (d == null) "도착지 못 찾음" else "-"}"
+                }
+                val d = null as Geo.Pt?
+                if (lines.any { "못 찾음" in it }) status("📍 위치 못 찾음 (출발 ${call.originQueries.firstOrNull()} / 도착 ${call.destQueries.firstOrNull()}) ${Geo.lastError}")
                 handler.post {
                     if (Store.current(this)?.key == call.key) { timeLines = lines; renderBubble() }
                 }

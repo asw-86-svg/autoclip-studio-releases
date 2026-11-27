@@ -18,7 +18,11 @@ object Geo {
     private val misses = ConcurrentHashMap.newKeySet<String>()
 
     /** 후보들을 순서대로 시도해서 처음 찾은 좌표를 돌려준다. 네트워크를 쓰므로 백그라운드에서 호출. */
-    fun resolve(ctx: Context, queries: List<String>): Pt? {
+    /**
+     * @param allowArea true 면 가게 이름을 못 찾을 때 동네(동·읍·면) 위치라도 돌려준다 — 시간 '대략' 계산용.
+     *                  길안내에는 false (엉뚱한 동네 한가운데로 안내하지 않게)
+     */
+    fun resolve(ctx: Context, queries: List<String>, allowArea: Boolean = false): Pt? {
         val key = ctx.kakaoKey.trim()
         // "고덕동"처럼 여러 곳에 있는 이름은 지금 내 위치 근처(약 35km)부터 찾는다
         val near = Loc.lastPt(ctx)
@@ -34,7 +38,11 @@ object Geo {
             if (pt != null) { cache[ck] = pt; return pt }
             misses += ck
         }
-        return null
+        if (!allowArea) return null
+        // 가게 이름은 못 찾았지만 동네 이름은 있으면 그 동네 위치로 (대략)
+        val area = queries.firstOrNull()?.split(" ")?.takeWhile { t -> Regex("""(시|군|구|읍|면|동|리|가)$""").containsMatchIn(t) || t in PROVINCE_SHORT }
+            ?.joinToString(" ")?.takeIf { it.isNotBlank() } ?: return null
+        return (near?.let { geocoder(ctx, area, it) } ?: geocoder(ctx, area))?.copy(label = "$area (대략)")
     }
 
     /** 마지막 위치 찾기 실패 이유 (문제 해결용) */

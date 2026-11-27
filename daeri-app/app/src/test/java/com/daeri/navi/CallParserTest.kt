@@ -309,6 +309,17 @@ class CallParserTest {
         assertTrue(CallParser.parseViaDetail(listOf("배정 완료", "고덕동")) == null)
     }
 
+    @Test fun 카카오_카드_시간_읽기() {
+        val c = CallParser.parse(listOf("넘기기", "확인", "제휴", "도보 1.0km / 약 16분", "수원시권선구 권선동 찬스돔나이트",
+            "♥", "용인시기흥구 마북동", "e편한세상구성역플랫폼시티아파트", "약 18분 운행", "현금 | 확정", "실제수익", "20,000"),
+            "카카오T 대리", allowFreeText = false)!!
+        assertEquals(16, c.walkMin)
+        assertEquals(1.0, c.walkKm, 0.01)
+        assertEquals(18, c.driveMin)
+        assertTrue(c.partner)
+        assertEquals("수원시 권선구 권선동 찬스돔나이트", c.originQueries.first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

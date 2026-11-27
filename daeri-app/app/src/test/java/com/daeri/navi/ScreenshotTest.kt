@@ -72,7 +72,7 @@ class ScreenshotTest {
     @Test fun home() = shot("home", "home")
     @Test fun call() = shot("call", "call")
     @Test fun calls() = shot("calls", "calls")
-    @Test fun auto() = shot("auto", "auto")
+    @Test fun auto() = shot("auto", "auto", 2600)
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 3000)
 }

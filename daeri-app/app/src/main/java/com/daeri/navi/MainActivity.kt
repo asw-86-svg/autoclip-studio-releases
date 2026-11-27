@@ -673,19 +673,23 @@ class MainActivity : Activity() {
     private var trashBack = Screen.DAY
 
     private fun renderAuto() {
-        val pending = Store.trips(this).filter { !it.confirmed }.sortedByDescending { it.time }
+        val todayKey = dayKey(System.currentTimeMillis())
+        val all = Store.trips(this)
+        val pending = all.filter { !it.confirmed }
+        // 아직 일지에 안 넣은 콜 + 오늘 자동으로 잡혀서 일지에 넣은 콜 (넣어도 사라지지 않게)
+        val shown = all.filter { !it.confirmed || (it.callKey.isNotEmpty() && dayKey(it.time) == todayKey) }.sortedByDescending { it.time }
         setTop("자동운행기록", true, if (pending.isNotEmpty()) "목록삭제" else null) {
             confirm("자동운행기록 ${pending.size}개를 지울까요?\n(삭제된 기록에서 30일 동안 되살릴 수 있어요)") {
                 pending.forEach { Store.deleteTrip(this, it.id) }; render()
             }
         }
-        if (pending.isEmpty()) {
+        if (shown.isEmpty()) {
             root.addView(card().apply {
                 addView(text("자동으로 잡힌 콜이 없어요.\n대리 앱에서 콜을 수락하면 여기에 쌓여요.", 15f, grey))
             })
         }
         val f = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
-        pending.forEach { t ->
+        shown.forEach { t ->
             root.addView(card().apply {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -726,12 +730,13 @@ class MainActivity : Activity() {
                     smallButton("삭제", 0xFF3A2224.toInt(), red) {
                         confirm("이 기록을 지울까요?") { Store.deleteTrip(this@MainActivity, t.id); render() }
                     },
-                    smallButton("일지에 추가", blue) { openEditor(t) },
+                    if (t.confirmed) smallButton("✓ 일지에 추가됨 · 수정", 0xFF1F3354.toInt(), blue) { openEditor(t) }
+                    else smallButton("일지에 추가", blue) { openEditor(t) },
                 ), weights = listOf(0.7f, 1.2f, 2.6f)))
             })
         }
-        val trashed = Store.trash(this).size
-        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { trashBack = Screen.AUTO; go(Screen.TRASH) })
+        // 휴지통은 항상 보이게
+        root.addView(button("🗑 휴지통 (${Store.trash(this).size})", innerBg) { trashBack = Screen.AUTO; go(Screen.TRASH) })
 
         // 일일 합계 (오늘 일지에 넣은 것)
         val today = dayKey(System.currentTimeMillis())
@@ -771,8 +776,7 @@ class MainActivity : Activity() {
             })
         }
         root.addView(button("+ 새일지 등록", blue) { openEditor(null) })
-        val trashed = Store.trash(this).size
-        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { trashBack = Screen.DAY; go(Screen.TRASH) })
+        root.addView(button("🗑 휴지통 (${Store.trash(this).size})", innerBg) { trashBack = Screen.DAY; go(Screen.TRASH) })
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
         footer.addView(summaryBlock("일일 합계", list))
@@ -780,7 +784,7 @@ class MainActivity : Activity() {
 
     // ---------------- 삭제된 기록 (30일 보관, 되살리기) ----------------
     private fun renderTrash() {
-        setTop("삭제된 기록", true)
+        setTop("휴지통", true)
         val list = Store.trash(this)
         root.addView(text("지운 기록은 30일 동안 여기 남아 있어요. [되살리기]를 누르면 원래 날짜로 돌아가요.", 13f, grey).apply { setPadding(dp(6), 0, dp(6), dp(8)) })
         if (list.isEmpty()) { root.addView(card().apply { addView(text("삭제된 기록이 없어요.", 15f, grey)) }); return }
@@ -1097,6 +1101,26 @@ class MainActivity : Activity() {
                 kakaoKey = key.text.toString().trim()
                 rate.text.toString().toIntOrNull()?.let { commissionRate = it }
                 toast("저장했어요")
+            })
+        })
+
+        // 운행일지 데이터 상태 + 백업에서 되살리기
+        root.addView(card().apply {
+            val all = Store.trips(this@MainActivity)
+            addView(text("📒 운행일지 데이터", 16f, white, bold = true))
+            addView(text("일지 ${all.count { it.confirmed }}건 · 일지에 안 넣은 자동운행기록 ${all.count { !it.confirmed }}건 · 휴지통 ${Store.trash(this@MainActivity).size}건", 14f, 0xFF7FB2FF.toInt()))
+            addView(text("운행일지가 바뀔 때마다 바뀌기 전 상태를 자동으로 백업해요 (30일 보관).", 12f, grey))
+            addView(button("백업에서 되살리기", innerBg) {
+                val list = Store.backups(this@MainActivity)
+                if (list.isEmpty()) { toast("아직 백업이 없어요"); return@button }
+                val names = list.map { "${it.label} · 일지 ${it.confirmed}건 · 자동 ${it.pending}건" }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity).setTitle("어느 때로 되살릴까요?").setItems(names) { _, i ->
+                    confirm("${list[i].label} 백업에만 있는 기록을 지금 기록에 더할까요?\n(지금 기록은 그대로 남아요)") {
+                        val n = Store.mergeBackup(this@MainActivity, list[i])
+                        toast(if (n > 0) "${n}건을 되살렸어요" else "되살릴 기록이 없어요 (이미 다 있어요)")
+                        render()
+                    }
+                }.show()
             })
         })
 

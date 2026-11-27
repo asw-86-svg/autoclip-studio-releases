@@ -28,6 +28,10 @@ data class CallInfo(
     val partner: Boolean = false,
     /** 경유지 ("서정동, 가수동 경유") */
     val via: String = "",
+    /** 콜카드에 적힌 출발지까지 도보 시간(분)·거리(km) — 카카오 "도보 1.0km / 약 16분" */
+    val walkMin: Int = 0, val walkKm: Double = 0.0,
+    /** 콜카드에 적힌 출발→도착 차량 시간(분) — 카카오 "약 18분 운행" */
+    val driveMin: Int = 0,
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -95,7 +99,15 @@ object CallParser {
         if (lines.isEmpty()) return null
         val rec = lines.any { "추천가" in norm(it) }
         val partner = lines.any { "제휴" in norm(it) }
-        return parseAll(lines, source, allowFreeText)?.let { it.copy(recommended = it.recommended || rec, partner = it.partner || partner) }
+        // 콜카드에 시간이 적혀 있으면 그대로 쓴다
+        val walk = lines.firstNotNullOfOrNull { Regex("""도보\s*([\d.]+)\s*(km|m)\s*[/(]?\s*약?\s*(\d+)\s*분""", RegexOption.IGNORE_CASE).find(it) }
+        val walkMin = walk?.groupValues?.get(3)?.toIntOrNull() ?: 0
+        val walkKm = walk?.let { m -> (m.groupValues[1].toDoubleOrNull() ?: 0.0) * if (m.groupValues[2].lowercase() == "m") 0.001 else 1.0 } ?: 0.0
+        val driveMin = lines.firstNotNullOfOrNull { Regex("""약\s*(\d+)\s*분\s*운행""").find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        return parseAll(lines, source, allowFreeText)?.let {
+            it.copy(recommended = it.recommended || rec, partner = it.partner || partner,
+                walkMin = walkMin, walkKm = walkKm, driveMin = driveMin)
+        }
     }
 
     private fun parseAll(lines: List<String>, source: String, allowFreeText: Boolean): CallInfo? {
@@ -292,7 +304,10 @@ object CallParser {
     private fun parseKakaoCard(lines: List<String>, source: String): CallInfo? {
         if (lines.none { "실제수익" in norm(it) }) return null
         val endWords = listOf("추천가", "콜받도착", "제휴", "카드|", "현금|", "실제수익")
-        val k = lines.indexOfFirst { l -> DRIVE_MIN.matches(l.trim()) || endWords.any { it in norm(l) } }
+        // 주소가 처음 나온 뒤에 오는 '약 N분 운행'·태그·결제 줄을 카드 주소의 끝으로 본다 (맨 위 '제휴' 표시는 무시)
+        val a0 = lines.indexOfFirst { isAddrLike(it) }
+        if (a0 < 0) return null
+        val k = (a0 until lines.size).firstOrNull { i -> lines[i].let { l -> DRIVE_MIN.matches(l.trim()) || endWords.any { it in norm(l) } } } ?: return null
         if (k < 1) return null
         val body = ArrayList<String>()
         var i = k - 1

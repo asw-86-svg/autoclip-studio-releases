@@ -82,10 +82,17 @@ object Store {
         val title get() = listOf(origin, dest).filter { it.isNotBlank() }.joinToString(" → ")
     }
 
-    fun trips(ctx: Context): List<Trip> = runCatching {
-        val arr = JSONArray(p(ctx).getString("trips", "[]"))
-        (0 until arr.length()).map { i -> tripFromJson(arr.getJSONObject(i)) }
-    }.getOrDefault(emptyList())
+    /** 운행일지 읽기/쓰기는 한 번에 하나씩 (콜 읽기와 화면이 동시에 고쳐서 기록이 빠지는 일 방지) */
+    val tripLock = Any()
+
+    /** 깨진 기록이 하나 있어도 나머지는 그대로 읽는다. 전체가 깨졌으면 직전 상태에서 읽는다 */
+    fun trips(ctx: Context): List<Trip> = synchronized(tripLock) {
+        fun parse(raw: String?): List<Trip>? = runCatching {
+            val arr = JSONArray(raw ?: "[]")
+            (0 until arr.length()).mapNotNull { i -> runCatching { tripFromJson(arr.getJSONObject(i)) }.getOrNull() }
+        }.getOrNull()
+        parse(p(ctx).getString("trips", "[]")) ?: parse(p(ctx).getString("trips_prev", "[]")) ?: emptyList()
+    }
 
     private fun tripFromJson(o: JSONObject): Trip =
                 if (o.has("fare")) Trip(
@@ -114,10 +121,56 @@ object Store {
         put("ok", t.confirmed); put("pkg", t.pkg)
     }
 
-    private fun saveTrips(ctx: Context, list: List<Trip>) {
+    private fun saveTrips(ctx: Context, list: List<Trip>) = synchronized(tripLock) {
         val arr = JSONArray()
         list.sortedBy { it.time }.forEach { arr.put(tripToJson(it)) }
-        p(ctx).edit().putString("trips", arr.toString()).apply()
+        val old = p(ctx).getString("trips", "[]").orEmpty()
+        backupSnapshot(ctx, old)
+        // commit(): 바로 디스크에 써서 앱이 갑자기 꺼져도 안 날아가게
+        p(ctx).edit().putString("trips_prev", old).putString("trips", arr.toString()).commit()
+        Unit
+    }
+
+    // ---------------- 운행일지 자동 백업 (30일) ----------------
+    private fun backupDir(ctx: Context) = java.io.File(ctx.filesDir, "backup").apply { mkdirs() }
+
+    /** 바뀌기 전 상태를 시간 단위 파일로 남긴다 (그 시간 첫 변경 때 한 번) */
+    private fun backupSnapshot(ctx: Context, oldJson: String) {
+        runCatching {
+            if (oldJson.length < 5) return  // 비어 있으면 남길 필요 없음
+            val name = "trips-" + java.text.SimpleDateFormat("yyyyMMdd-HH", java.util.Locale.KOREA).format(java.util.Date()) + ".json"
+            val f = java.io.File(backupDir(ctx), name)
+            if (!f.exists()) f.writeText(oldJson)
+            val monthAgo = System.currentTimeMillis() - 30L * 24 * 3600_000L
+            backupDir(ctx).listFiles()?.filter { it.lastModified() < monthAgo }?.forEach { it.delete() }
+        }
+    }
+
+    data class Backup(val file: java.io.File, val label: String, val confirmed: Int, val pending: Int)
+
+    /** 되살릴 수 있는 백업 목록 (최신 먼저) */
+    fun backups(ctx: Context): List<Backup> {
+        val fmtIn = java.text.SimpleDateFormat("yyyyMMdd-HH", java.util.Locale.KOREA)
+        val fmtOut = java.text.SimpleDateFormat("M월 d일 H시 무렵", java.util.Locale.KOREA)
+        return (backupDir(ctx).listFiles()?.toList().orEmpty()).sortedByDescending { it.name }.mapNotNull { f ->
+            val list = runCatching {
+                val arr = JSONArray(f.readText())
+                (0 until arr.length()).mapNotNull { i -> runCatching { tripFromJson(arr.getJSONObject(i)) }.getOrNull() }
+            }.getOrNull() ?: return@mapNotNull null
+            val label = runCatching { fmtOut.format(fmtIn.parse(f.name.removePrefix("trips-").removeSuffix(".json"))!!) }.getOrDefault(f.name)
+            Backup(f, label, list.count { it.confirmed }, list.count { !it.confirmed })
+        }
+    }
+
+    /** 백업에만 있는 기록을 지금 기록에 더한다 (지금 기록은 그대로) → 더한 건수 */
+    fun mergeBackup(ctx: Context, b: Backup): Int = synchronized(tripLock) {
+        val arr = runCatching { JSONArray(b.file.readText()) }.getOrNull() ?: return 0
+        val fromBackup = (0 until arr.length()).mapNotNull { i -> runCatching { tripFromJson(arr.getJSONObject(i)) }.getOrNull() }
+        val now = trips(ctx)
+        val ids = now.map { it.id }.toSet()
+        val add = fromBackup.filter { it.id !in ids }
+        if (add.isNotEmpty()) saveTrips(ctx, now + add)
+        add.size
     }
 
     // ---------------- 삭제된 기록 (되살리기 가능) ----------------
@@ -172,15 +225,15 @@ object Store {
         if (tr.any { it.callKey == key && !it.confirmed }) saveTrips(ctx, tr.map { if (it.callKey == key && !it.confirmed) it.copy(via = via) else it })
     }
 
-    fun upsertTrip(ctx: Context, t: Trip) = saveTrips(ctx, trips(ctx).filter { it.id != t.id } + t)
-    fun deleteTrip(ctx: Context, id: Long) {
+    fun upsertTrip(ctx: Context, t: Trip) = synchronized(tripLock) { saveTrips(ctx, trips(ctx).filter { it.id != t.id } + t) }
+    fun deleteTrip(ctx: Context, id: Long) = synchronized(tripLock) {
         val (gone, keep) = trips(ctx).partition { it.id == id }
         moveToTrash(ctx, gone, "직접 삭제")
         saveTrips(ctx, keep)
     }
 
     /** 수락된 콜(상세배차정보·배정완료)을 읽으면 운행일지에 자동 기록. 같은 콜은 12시간 안에 한 번만. */
-    private fun recordAccepted(ctx: Context, c: CallInfo) {
+    private fun recordAccepted(ctx: Context, c: CallInfo) = synchronized(tripLock) {
         val list = trips(ctx)
         if (list.any { it.callKey == c.key && abs(it.time - c.capturedAt) < 12 * 3600_000L }) return
         val fare = CallParser.won(c.fare)
@@ -293,6 +346,7 @@ object Store {
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
         put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended); put("partner", c.partner); put("via", c.via)
+        put("walkMin", c.walkMin); put("walkKm", c.walkKm); put("driveMin", c.driveMin)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -305,6 +359,7 @@ object Store {
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
         accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
         autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"), partner = o.optBoolean("partner"), via = o.optString("via"),
+        walkMin = o.optInt("walkMin"), walkKm = o.optDouble("walkKm", 0.0), driveMin = o.optInt("driveMin"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),
