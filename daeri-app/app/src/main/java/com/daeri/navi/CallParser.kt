@@ -79,7 +79,8 @@ object CallParser {
         val n = norm(clean(joined))
         return ("출발지" in n && "도착지" in n) || "배정완료" in n ||
             "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n) ||
-            ("출발" in n && "도착" in n) // 대리 앱만 읽으므로 넓게 잡아도 된다
+            ("출발" in n && "도착" in n) || // 대리 앱만 읽으므로 넓게 잡아도 된다
+            ("실제수익" in n && "분운행" in n)  // 카카오 단독배정 카드
     }
 
     /** allowFreeText=false: 자동 읽기에서는 '출발: / 도착:' 자유 글 형식은 쓰지 않는다 (채팅 등 오인 방지) */
@@ -88,6 +89,7 @@ object CallParser {
         if (lines.isEmpty()) return null
         return parseLabeled(lines, source)
             ?: parseKakao(lines, source)
+            ?: parseKakaoCard(lines, source)
             ?: parseOffer(lines, source)
             ?: if (allowFreeText) parseFreeText(lines.joinToString("\n"), source) else null
     }
@@ -242,6 +244,35 @@ object CallParser {
             source.ifEmpty { "콜 수락 화면" }, addr[0], addr[1],
             candidates(addr[0]), candidates(addr[1]), fare,
         )
+    }
+
+    // ---------- 카카오T 대리 단독배정 카드 ----------
+    // "…신동 / 아이오라여성의원 / ⌄ / ♥ 경기 용인시 기흥구 서천동로91번길 8-11 / 약 11분 운행 / 카드|확정 / 실제수익 16,800"
+    private val DRIVE_MIN = Regex("""^약\s*\d+\s*분\s*운행$""")
+
+    private fun parseKakaoCard(lines: List<String>, source: String): CallInfo? {
+        val k = lines.indexOfFirst { DRIVE_MIN.matches(it.trim()) }
+        if (k < 1 || lines.none { "실제수익" in norm(it) }) return null
+        val body = ArrayList<String>()
+        var i = k - 1
+        while (i >= 0 && body.size < 5) {
+            val l = lines[i].trim()
+            val shortArea = l.length in 2..8 && Regex("""[가-힣]+(동|읍|면|리|구)$""").matches(l.replace(" ", ""))
+            if (isAddrLike(l) || shortArea) body.add(0, l)
+            else if (l.any { it in '가'..'힣' }) break   // 주소 아닌 글자(버튼 등)를 만나면 멈춤
+            i--
+        }
+        if (body.size < 2) return null
+        // 도착지는 '경기 …', '서울 …' 처럼 시·도로 시작
+        var split = (1 until body.size).firstOrNull { body[it].split(" ").first() in PROVINCES } ?: (body.size / 2)
+        if (split <= 0 || split >= body.size) split = body.size / 2
+        val origin = body.subList(0, split).joinToString(" ")
+        val dest = body.subList(split, body.size).joinToString(" ")
+        val fareLine = lines.drop(k).firstOrNull { "실제수익" in norm(it) && MONEY.containsMatchIn(it) }
+            ?: lines.drop(k).firstOrNull { MONEY.containsMatchIn(it) && !it.contains('|') }
+            ?: lines.drop(k).firstOrNull { MONEY.containsMatchIn(it) }
+        val fare = fareLine?.let { MONEY.find(it)?.value }.orEmpty()
+        return CallInfo(source.ifEmpty { "카카오T 대리" }, origin, dest, candidates(origin), candidates(dest), fare)
     }
 
     // ---------- 4. 문자/카톡에서 붙여넣은 글 ----------

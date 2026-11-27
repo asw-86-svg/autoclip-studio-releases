@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
+import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.kakaoBubble
@@ -106,7 +107,7 @@ class CallReaderService : AccessibilityService() {
         bg.postAtTime(scanTask, at)
     }
 
-    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기")
+    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기", "단독배정확인", "프로단독배정")
     private val CANCEL_WORDS = listOf("취소되었습니다", "거부성공", "거부되었습니다", "배차가취소", "오더거부성공")
 
     /** 지금 콜을 '배정'으로 바꾸고 자동운행기록에 넣는다 */
@@ -212,17 +213,16 @@ class CallReaderService : AccessibilityService() {
     private fun bubbleFor(pkg: String) = kakaoBubble || "kakao" !in pkg.lowercase()
 
     /** 마지막으로 콜을 본 뒤 5분 동안 말풍선 내용 유지, 그 뒤엔 작은 '출/도'로 */
-    private val BUBBLE_KEEP_MS = 5 * 60_000L
+    // 설정한 시간(10초/30초/1분/5분)이 지나면 말풍선을 숨기고, 다음 콜이 오면 다시 띄운다
     private val resetBubble = Runnable {
         bubbleCall = null
         timeLines = emptyList()
-        bubble?.text = "출/도"
-        bubble?.textSize = 14f
+        hideBubble()
     }
 
     private fun keepBubble() {
         handler.removeCallbacks(resetBubble)
-        handler.postDelayed(resetBubble, BUBBLE_KEEP_MS)
+        handler.postDelayed(resetBubble, bubbleKeepSec * 1000L)
     }
 
     /** 새 콜이 잡히면 이 시각까지 말풍선을 크게 펼쳐 출발지·도착지까지 보여준다 */
@@ -238,7 +238,7 @@ class CallReaderService : AccessibilityService() {
         // 출발지·도착지 이름은 빼고 시간만 (새 콜 직후엔 '시간 계산 중…')
         lines += timeLines.ifEmpty { if (expanded) listOf("시간 계산 중…") else listOf("출/도") }
         b.text = lines.joinToString("\n")
-        b.textSize = 14f
+        b.textSize = 13f
     }
 
     /** 말풍선: "출 - 🚶12분"(걸어서 20분 넘으면 🚌) / "출 → 도 🚗55분" */
@@ -335,7 +335,7 @@ class CallReaderService : AccessibilityService() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = TextView(this).apply {
             text = "출/도"
-            textSize = 14f
+            textSize = 13f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setLineSpacing(dp(2).toFloat(), 1f)
             setTextColor(0xFFFFFFFF.toInt())

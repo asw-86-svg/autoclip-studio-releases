@@ -56,4 +56,5 @@ class ScreenshotTest {
     @Test fun day() = shot("day", "day")
     @Test fun home() = shot("home", "home")
     @Test fun call() = shot("call", "call")
+    @Test fun settings() = shot("settings", "settings", 3000)
 }

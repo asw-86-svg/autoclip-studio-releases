@@ -264,6 +264,17 @@ class CallParserTest {
         assertEquals("수원시 영통구 영통동 975-7", c.originQueries.first())
     }
 
+    @Test fun 카카오_단독배정_카드() {
+        val lines = listOf("넘기기", "단독배정 확인", "프로 단독배정", "영통구 신동", "아이오라여성의원",
+            "♥", "경기 용인시 기흥구 서천동로91번길 8-11", "약 11분 운행", "콜받도착", "카드 | 확정", "실제수익", "16,800")
+        assertTrue(CallParser.looksLikeCall(lines.joinToString("\n")))
+        val c = CallParser.parse(lines, "카카오T 대리", allowFreeText = false)!!
+        assertEquals("영통구 신동 아이오라여성의원", c.originRaw)
+        assertEquals("경기 용인시 기흥구 서천동로91번길 8-11", c.destQueries.first())
+        assertEquals(16800, CallParser.won(c.fare))
+        assertTrue(!c.accepted)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

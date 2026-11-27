@@ -23,6 +23,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.daeri.navi.MapLauncher.App
 import com.daeri.navi.MapLauncher.Mode
+import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.commissionRate
 import com.daeri.navi.Store.detectPaused
@@ -69,6 +70,13 @@ class MainActivity : Activity() {
     private val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
     private fun dayKey(t: Long) = dayKeyFmt.format(Date(t))
     private fun won(n: Int) = String.format(Locale.KOREA, "%,d", n)
+
+    /** 앱 전체 글자를 10% 작게 */
+    override fun attachBaseContext(base: android.content.Context) {
+        val c = android.content.res.Configuration(base.resources.configuration)
+        c.fontScale = c.fontScale * 0.9f
+        super.attachBaseContext(base.createConfigurationContext(c))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -403,13 +411,28 @@ class MainActivity : Activity() {
         }
         var loaded = false
         var pending: String? = null
+        // 지도 서버(OpenStreetMap)가 요구하는 출처(Referer)를 주려고, 앱 안 파일을 https 주소로 연다
+        val host = "appassets.androidplatform.net"
+        web.settings.userAgentString = web.settings.userAgentString + " DaeriNavi/" + versionName()
         web.webViewClient = object : android.webkit.WebViewClient() {
+            override fun shouldInterceptRequest(view: android.webkit.WebView, req: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                if (req.url.host != host) return null
+                val path = req.url.path.orEmpty().removePrefix("/assets/")
+                val mime = when {
+                    path.endsWith(".html") -> "text/html"
+                    path.endsWith(".js") -> "application/javascript"
+                    path.endsWith(".css") -> "text/css"
+                    path.endsWith(".png") -> "image/png"
+                    else -> "application/octet-stream"
+                }
+                return runCatching { android.webkit.WebResourceResponse(mime, "utf-8", assets.open(path)) }.getOrNull()
+            }
             override fun onPageFinished(view: android.webkit.WebView, url: String) {
                 loaded = true
                 pending?.let { view.evaluateJavascript(it, null) }
             }
         }
-        web.loadUrl("file:///android_asset/map.html")
+        web.loadUrl("https://$host/assets/map.html")
         Thread {
             val o = Geo.resolve(this, c.originQueries)
             val d = Geo.resolve(this, c.destQueries)
@@ -917,6 +940,16 @@ class MainActivity : Activity() {
                 }
             }))
             addView(text("'안 띄움'이어도 콜 읽기와 받은 콜 목록 기록은 계속 돼요.", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
+            addView(text("말풍선 보이는 시간", 15f, white, bold = true).apply { setPadding(0, dp(14), 0, 0) })
+            val keeps = listOf(10 to "10초", 30 to "30초", 60 to "1분", 300 to "5분")
+            addView(row(keeps.map { (sec, label) ->
+                button(label, if (bubbleKeepSec == sec) blue else innerBg) {
+                    bubbleKeepSec = sec
+                    toast("콜이 들어오면 말풍선을 ${label} 동안 보여줘요")
+                    render()
+                }
+            }))
+            addView(text("시간이 지나면 말풍선이 숨겨지고, 다음 콜이 오면 다시 떠요.", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
             addView(button(
                 "카카오T 대리 콜에도 말풍선 띄우기: " + if (kakaoBubble) "켜짐" else "꺼짐",
                 if (kakaoBubble) blue else innerBg,

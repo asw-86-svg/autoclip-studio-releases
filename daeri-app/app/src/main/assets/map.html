@@ -33,9 +33,10 @@
     if (lastPts.length == 1) map.setView(lastPts[0], 15);
     else if (lastPts.length == 2) map.fitBounds(lastPts, {padding: [50, 50]});
   }
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd', maxZoom: 19,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  // OpenStreetMap 기본 지도 (키 필요 없음, 한글 지명)
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
   var layer = L.layerGroup().addTo(map);
 

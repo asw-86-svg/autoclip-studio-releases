@@ -205,6 +205,11 @@ object Store {
         get() = p(this).getBoolean("kakaoBubble", false)
         set(v) = p(this).edit().putBoolean("kakaoBubble", v).apply()
 
+    /** 콜이 들어온 뒤 말풍선을 보여주는 시간(초). 지나면 숨기고 다음 콜에 다시 띄움. 기본 5분 */
+    var Context.bubbleKeepSec: Int
+        get() = p(this).getInt("bubbleKeepSec", 300)
+        set(v) = p(this).edit().putInt("bubbleKeepSec", v).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
