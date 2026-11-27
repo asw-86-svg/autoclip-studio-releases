@@ -390,13 +390,14 @@ class CallReaderService : AccessibilityService() {
     /** 설정(항상 / 대리 앱 볼 때만 / 안 띄움)에 맞춰 말풍선을 보이거나 숨긴다 */
     fun applyBubbleMode() {
         val mode = bubbleMode
-        if (mode == 2) { hideBubble(); return }
+        // 퇴근 상태(출근 전)면 말풍선을 띄우지 않는다
+        if (mode == 2 || detectPaused) { hideBubble(); return }
         if (bubble == null && Store.current(this) != null) showBubble()
         bubble?.visibility = if (mode == 1 && !fgIsCallApp) View.GONE else View.VISIBLE
     }
 
     fun showBubble() {
-        if (bubbleMode == 2) return
+        if (bubbleMode == 2 || detectPaused) return
         if (bubble != null) { applyBubbleVisibility(); return }
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = makeBubbleView(this)

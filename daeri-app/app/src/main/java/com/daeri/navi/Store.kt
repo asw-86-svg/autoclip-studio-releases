@@ -299,8 +299,13 @@ object Store {
         set(v) = p(this).edit().putString("home", v).apply()
 
     var Context.kakaoKey: String
-        get() = p(this).getString("kakaoKey", "").orEmpty()
+        get() = p(this).getString("kakaoKey", "").orEmpty().ifBlank { BuiltIn.rest }
         set(v) = p(this).edit().putString("kakaoKey", v).apply()
+
+    /** 카카오 JavaScript 키 — 콜 상세 지도를 카카오 지도로 (없으면 OpenStreetMap) */
+    var Context.kakaoJsKey: String
+        get() = p(this).getString("kakaoJsKey", "").orEmpty().ifBlank { BuiltIn.js }
+        set(v) = p(this).edit().putString("kakaoJsKey", v.trim()).apply()
 
     /** 말풍선 표시: 0 = 항상, 1 = 대리 앱 볼 때만, 2 = 안 띄움 */
     var Context.bubbleMode: Int
@@ -348,7 +353,8 @@ object Store {
         set(v) = p(this).edit().putBoolean("autoToLog", v).apply()
 
     var Context.detectPaused: Boolean
-        get() = p(this).getBoolean("paused", false)
+        // 출근 누르기 전까지는 콜을 읽지 않는다 (기본 = 퇴근 상태)
+        get() = p(this).getBoolean("paused", true)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
 
     /** 출근 누른 시각 (퇴근 리포트·시급 계산용) */

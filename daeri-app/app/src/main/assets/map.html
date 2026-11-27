@@ -16,48 +16,117 @@
        background:#2A2A2E;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center}
   .leaflet-control-attribution{font-size:9px;background:rgba(0,0,0,.4)!important;color:#aaa}
   .leaflet-control-attribution a{color:#ccc}
+  /* 카카오 지도용 확대/축소 (Leaflet 버튼과 같은 모양) */
+  .zoom{position:absolute;right:10px;top:10px;z-index:1000;display:none;flex-direction:column;border:1px solid #555;border-radius:10px;overflow:hidden}
+  .zoom a{width:48px;height:48px;line-height:46px;text-align:center;font-size:28px;background:#2A2A2E;color:#fff;border-bottom:1px solid #444;user-select:none}
+  .kpin{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .ktag{background:#111;color:#fff;border-radius:8px;font:700 13px sans-serif;padding:3px 8px;box-shadow:0 1px 4px rgba(0,0,0,.5);margin-bottom:6px}
+  .kwrap{display:flex;flex-direction:column;align-items:center;transform:translateY(-22px)}
 </style>
 <script src="leaflet/leaflet.js"></script>
 </head><body>
 <div id="map"></div>
 <div class="msg" id="msg">위치 찾는 중…</div>
+<div class="zoom" id="zoom"><a id="zin">+</a><a id="zout">−</a></div>
 <div class="fit" id="fit" title="출발·도착 한눈에">⤢</div>
 <script>
-  // 기본: 대한민국 가운데
-  var map = L.map('map', {zoomControl: false, attributionControl: true, touchZoom: true, doubleClickZoom: true,
-                          scrollWheelZoom: true, tap: true}).setView([36.5, 127.8], 7);
-  L.control.zoom({position: 'topright', zoomInTitle: '확대', zoomOutTitle: '축소'}).addTo(map);
+  // 주소에 ?kakao=자바스크립트키 가 있으면 카카오 지도, 없거나 실패하면 OpenStreetMap
+  var KEY = (location.search.match(/[?&]kakao=([^&]+)/) || [])[1] || '';
+  var impl = null;      // {set(pts), fit()}
+  var queued = null;    // 지도가 준비되기 전에 들어온 setPoints
   var lastPts = [];
-  document.getElementById('fit').onclick = function () { fitAll(); };
-  function fitAll() {
-    if (lastPts.length == 1) map.setView(lastPts[0], 15);
-    else if (lastPts.length == 2) map.fitBounds(lastPts, {padding: [50, 50]});
-  }
-  // OpenStreetMap 기본 지도 (키 필요 없음, 한글 지명)
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
-  var layer = L.layerGroup().addTo(map);
+  var msg = document.getElementById('msg');
+  document.getElementById('fit').onclick = function () { if (impl) impl.fit(); };
 
-  function pin(lat, lng, color, label) {
-    var icon = L.divIcon({className: '', html: '<div class="pin" style="background:' + color + '"></div>', iconSize: [24, 24], iconAnchor: [12, 12]});
-    return L.marker([lat, lng], {icon: icon}).bindTooltip(label, {permanent: true, direction: 'top', offset: [0, -12], className: 'tag'});
+  function useLeaflet(note) {
+    if (impl) return;
+    var map = L.map('map', {zoomControl: false, attributionControl: true, touchZoom: true, doubleClickZoom: true,
+                            scrollWheelZoom: true, tap: true}).setView([36.5, 127.8], 7);
+    L.control.zoom({position: 'topright', zoomInTitle: '확대', zoomOutTitle: '축소'}).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' + (note ? ' · ' + note : '')
+    }).addTo(map);
+    var layer = L.layerGroup().addTo(map);
+    function pin(lat, lng, color, label) {
+      var icon = L.divIcon({className: '', html: '<div class="pin" style="background:' + color + '"></div>', iconSize: [24, 24], iconAnchor: [12, 12]});
+      return L.marker([lat, lng], {icon: icon}).bindTooltip(label, {permanent: true, direction: 'top', offset: [0, -12], className: 'tag'});
+    }
+    impl = {
+      set: function (pts) {
+        layer.clearLayers();
+        pts.forEach(function (p) { pin(p[0], p[1], p[2], p[3]).addTo(layer); });
+        if (pts.length == 2) L.polyline([[pts[0][0], pts[0][1]], [pts[1][0], pts[1][1]]], {color: '#3D85F0', weight: 3, opacity: .8, dashArray: '6 8'}).addTo(layer);
+      },
+      fit: function () {
+        if (lastPts.length == 1) map.setView([lastPts[0][0], lastPts[0][1]], 15);
+        else if (lastPts.length == 2) map.fitBounds([[lastPts[0][0], lastPts[0][1]], [lastPts[1][0], lastPts[1][1]]], {padding: [50, 50]});
+      }
+    };
+    if (queued) { var q = queued; queued = null; setPoints.apply(null, q); }
   }
 
-  // 안드로이드에서 호출: setPoints(출발위도, 출발경도, 도착위도, 도착경도) — 못 찾은 쪽은 null
+  function useKakao() {
+    var done = false;
+    // 6초 안에 카카오 지도가 안 뜨면 (키·도메인 등록 문제, 인터넷) 기본 지도로
+    var timer = setTimeout(function () { if (!done) { done = true; useLeaflet('카카오 지도 실패(키·도메인 확인)'); } }, 6000);
+    var sc = document.createElement('script');
+    sc.src = 'https://dapi.kakao.com/v2/maps/sdk.js?autoload=false&appkey=' + encodeURIComponent(KEY);
+    sc.onerror = function () { if (!done) { done = true; clearTimeout(timer); useLeaflet('카카오 지도 실패(인터넷·키 확인)'); } };
+    sc.onload = function () {
+      if (!window.kakao || !kakao.maps) { sc.onerror(); return; }
+      kakao.maps.load(function () {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        var km = kakao.maps;
+        var map = new km.Map(document.getElementById('map'), {center: new km.LatLng(36.5, 127.8), level: 13});
+        var z = document.getElementById('zoom');
+        z.style.display = 'flex';
+        document.getElementById('zin').onclick = function () { map.setLevel(map.getLevel() - 1, {animate: true}); };
+        document.getElementById('zout').onclick = function () { map.setLevel(map.getLevel() + 1, {animate: true}); };
+        var objs = [];
+        impl = {
+          set: function (pts) {
+            objs.forEach(function (o) { o.setMap(null); }); objs = [];
+            pts.forEach(function (p) {
+              var el = '<div class="kwrap"><div class="ktag">' + p[3] + '</div><div class="kpin" style="background:' + p[2] + '"></div></div>';
+              var ov = new km.CustomOverlay({position: new km.LatLng(p[0], p[1]), content: el, yAnchor: 0.5});
+              ov.setMap(map); objs.push(ov);
+            });
+            if (pts.length == 2) {
+              var line = new km.Polyline({path: [new km.LatLng(pts[0][0], pts[0][1]), new km.LatLng(pts[1][0], pts[1][1])],
+                strokeWeight: 3, strokeColor: '#3D85F0', strokeOpacity: .85, strokeStyle: 'dash'});
+              line.setMap(map); objs.push(line);
+            }
+          },
+          fit: function () {
+            if (lastPts.length == 1) { map.setLevel(4); map.setCenter(new km.LatLng(lastPts[0][0], lastPts[0][1])); }
+            else if (lastPts.length == 2) {
+              var b = new km.LatLngBounds();
+              lastPts.forEach(function (p) { b.extend(new km.LatLng(p[0], p[1])); });
+              map.setBounds(b, 60, 60, 60, 60);
+            }
+          }
+        };
+        if (queued) { var q = queued; queued = null; setPoints.apply(null, q); }
+      });
+    };
+    document.head.appendChild(sc);
+  }
+
+  // 안드로이드에서 호출: setPoints(출발위도, 출발경도, 도착위도, 도착경도, 못찾은이유) — 못 찾은 쪽은 null
   function setPoints(olat, olng, dlat, dlng, why) {
-    layer.clearLayers();
+    if (!impl) { queued = [olat, olng, dlat, dlng, why]; return; }
     var pts = [];
-    if (olat != null) { pin(olat, olng, '#3D85F0', '출발').addTo(layer); pts.push([olat, olng]); }
-    if (dlat != null) { pin(dlat, dlng, '#E5484D', '도착').addTo(layer); pts.push([dlat, dlng]); }
-    if (pts.length == 2) L.polyline(pts, {color: '#3D85F0', weight: 3, opacity: .8, dashArray: '6 8'}).addTo(layer);
-    var msg = document.getElementById('msg');
+    if (olat != null) pts.push([olat, olng, '#3D85F0', '출발']);
+    if (dlat != null) pts.push([dlat, dlng, '#E5484D', '도착']);
+    impl.set(pts);
     if (pts.length == 0) { msg.textContent = '출발지·도착지 위치를 못 찾았어요' + (why ? '\n' + why : ''); msg.style.whiteSpace = 'pre-line'; return; }
     if (why) { msg.textContent = (olat == null ? '출발지' : '도착지') + ' 위치를 못 찾았어요\n' + why; msg.style.whiteSpace = 'pre-line'; msg.style.top = 'auto'; msg.style.bottom = '8px'; msg.style.background = 'rgba(0,0,0,.6)'; msg.style.padding = '6px'; }
     else msg.style.display = 'none';
     lastPts = pts;
-    fitAll();
+    impl.fit();
   }
+
+  if (KEY) useKakao(); else useLeaflet();
 </script>
 </body></html>

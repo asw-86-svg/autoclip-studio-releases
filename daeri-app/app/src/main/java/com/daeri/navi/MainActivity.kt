@@ -36,6 +36,7 @@ import com.daeri.navi.Store.workStart
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoBubble
 import com.daeri.navi.Store.kakaoKey
+import com.daeri.navi.Store.kakaoJsKey
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -577,7 +578,8 @@ class MainActivity : Activity() {
                 pending?.let { view.evaluateJavascript(it, null) }
             }
         }
-        web.loadUrl("https://$host/assets/map.html")
+        // 카카오 JavaScript 키가 있으면 카카오 지도 (도메인 https://appassets.androidplatform.net 등록 필요)
+        web.loadUrl("https://$host/assets/map.html" + kakaoJsKey.takeIf { it.isNotBlank() }?.let { "?kakao=" + Uri.encode(it) }.orEmpty())
         Thread {
             val o = Geo.resolve(this, c.originQueries)
             val d = Geo.resolve(this, c.destQueries)
@@ -1285,25 +1287,21 @@ class MainActivity : Activity() {
             addView(text("집(복귀) 주소", 13f, grey))
             val home = edit("예) 경기 수원시 팔달구 효원로 241").apply { setText(homeAddress) }
             addView(home)
-            addView(text("카카오 REST API 키 (넣으면 주소 찾기·도착시간·톨비가 정확해져요)", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
-            val key = edit("developers.kakao.com 에서 무료 발급").apply { setText(kakaoKey) }
-            addView(key)
             addView(text("수수료율 (%) — 입금액이 안 나오는 콜(카카오 등) 수수료 자동 계산", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
             val rate = edit("20").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(commissionRate.toString()) }
             addView(rate)
-            addView(button("🔑 카카오 키 시험", innerBg) {
-                kakaoKey = key.text.toString().trim()
-                toast("카카오에 물어보는 중…")
-                Thread {
-                    val r = Geo.testKey(key.text.toString())
-                    runOnUiThread { if (!isFinishing) AlertDialog.Builder(this@MainActivity).setTitle("카카오 키 시험").setMessage(r).setPositiveButton("확인", null).show() }
-                }.start()
-            })
             addView(button("저장", blue) {
                 homeAddress = home.text.toString().trim()
-                kakaoKey = key.text.toString().trim()
                 rate.text.toString().toIntOrNull()?.let { commissionRate = it }
                 toast("저장했어요")
+            })
+            // 카카오 키는 앱에 들어 있음 — 잘 되는지만 확인
+            addView(button("🔑 카카오 연결 시험", innerBg) {
+                toast("카카오에 물어보는 중…")
+                Thread {
+                    val r = Geo.testKey(kakaoKey)
+                    runOnUiThread { if (!isFinishing) AlertDialog.Builder(this@MainActivity).setTitle("카카오 연결 시험").setMessage(r).setPositiveButton("확인", null).show() }
+                }.start()
             })
         })
 
