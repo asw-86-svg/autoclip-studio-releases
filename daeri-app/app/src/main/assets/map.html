@@ -46,15 +46,16 @@
   }
 
   // 안드로이드에서 호출: setPoints(출발위도, 출발경도, 도착위도, 도착경도) — 못 찾은 쪽은 null
-  function setPoints(olat, olng, dlat, dlng) {
+  function setPoints(olat, olng, dlat, dlng, why) {
     layer.clearLayers();
     var pts = [];
     if (olat != null) { pin(olat, olng, '#3D85F0', '출발').addTo(layer); pts.push([olat, olng]); }
     if (dlat != null) { pin(dlat, dlng, '#E5484D', '도착').addTo(layer); pts.push([dlat, dlng]); }
     if (pts.length == 2) L.polyline(pts, {color: '#3D85F0', weight: 3, opacity: .8, dashArray: '6 8'}).addTo(layer);
     var msg = document.getElementById('msg');
-    if (pts.length == 0) { msg.textContent = '출발지·도착지 위치를 못 찾았어요'; return; }
-    msg.style.display = 'none';
+    if (pts.length == 0) { msg.textContent = '출발지·도착지 위치를 못 찾았어요' + (why ? '\n' + why : ''); msg.style.whiteSpace = 'pre-line'; return; }
+    if (why) { msg.textContent = (olat == null ? '출발지' : '도착지') + ' 위치를 못 찾았어요\n' + why; msg.style.whiteSpace = 'pre-line'; msg.style.top = 'auto'; msg.style.bottom = '8px'; msg.style.background = 'rgba(0,0,0,.6)'; msg.style.padding = '6px'; }
+    else msg.style.display = 'none';
     lastPts = pts;
     fitAll();
   }

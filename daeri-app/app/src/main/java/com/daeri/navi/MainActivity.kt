@@ -582,7 +582,9 @@ class MainActivity : Activity() {
             val o = Geo.resolve(this, c.originQueries)
             val d = Geo.resolve(this, c.destQueries)
             fun js(p: Geo.Pt?) = if (p == null) "null,null" else "${p.lat},${p.lng}"
-            val call = "setPoints(${js(o)},${js(d)});"
+            // 못 찾았으면 이유(카카오 키 오류 등)를 지도에 글자로
+            val why = if (o == null || d == null) Geo.lastError.replace("\\", "").replace("'", "") else ""
+            val call = "setPoints(${js(o)},${js(d)},'$why');"
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (loaded) web.evaluateJavascript(call, null) else pending = call
@@ -1289,6 +1291,14 @@ class MainActivity : Activity() {
             addView(text("수수료율 (%) — 입금액이 안 나오는 콜(카카오 등) 수수료 자동 계산", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
             val rate = edit("20").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(commissionRate.toString()) }
             addView(rate)
+            addView(button("🔑 카카오 키 시험", innerBg) {
+                kakaoKey = key.text.toString().trim()
+                toast("카카오에 물어보는 중…")
+                Thread {
+                    val r = Geo.testKey(key.text.toString())
+                    runOnUiThread { if (!isFinishing) AlertDialog.Builder(this@MainActivity).setTitle("카카오 키 시험").setMessage(r).setPositiveButton("확인", null).show() }
+                }.start()
+            })
             addView(button("저장", blue) {
                 homeAddress = home.text.toString().trim()
                 kakaoKey = key.text.toString().trim()

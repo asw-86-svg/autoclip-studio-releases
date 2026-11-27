@@ -33,8 +33,9 @@ object Geo {
             val ck = "$key|$q|" + (near?.let { "${(it.lat * 10).toInt()},${(it.lng * 10).toInt()}" } ?: "")
             cache[ck]?.let { return it }
             if (ck in misses) continue
-            val pt = if (key.isNotEmpty()) kakao(key, "address", q) ?: kakao(key, "keyword", q, near) ?: kakao(key, "keyword", q)
-                     else (near?.let { geocoder(ctx, q, it) } ?: geocoder(ctx, q))
+            // 카카오 키가 있으면 카카오 먼저, 그래도 못 찾거나 키 오류면 휴대폰 기본 위치 찾기로
+            val pt = (if (key.isNotEmpty()) kakao(key, "address", q) ?: kakao(key, "keyword", q, near) ?: kakao(key, "keyword", q) else null)
+                ?: (near?.let { geocoder(ctx, q, it) } ?: geocoder(ctx, q))
             if (pt != null) { cache[ck] = pt; return pt }
             misses += ck
         }
@@ -79,12 +80,44 @@ object Geo {
         val con = url.openConnection() as HttpURLConnection
         con.setRequestProperty("Authorization", "KakaoAK $key")
         con.connectTimeout = 5000; con.readTimeout = 5000
+        val code = con.responseCode
+        if (code != 200) {
+            val err = runCatching { con.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty()
+            lastError = kakaoError(code, err)
+            return null
+        }
         val body = con.inputStream.bufferedReader().use { it.readText() }
         val doc = JSONObject(body).getJSONArray("documents").optJSONObject(0) ?: return null
         val label = doc.optString("place_name").ifEmpty { doc.optString("address_name") }
         Pt(doc.getString("y").toDouble(), doc.getString("x").toDouble(), label, q)
     }.onFailure {
-        lastError = if (it is java.io.IOException && (it.message.orEmpty().contains("401") || it.message.orEmpty().contains("403")))
-            "카카오 키 오류(키 확인 · 카카오맵 사용 설정 ON 필요)" else "카카오 검색 오류: ${it.javaClass.simpleName} ${it.message.orEmpty().take(60)}"
+        lastError = "카카오 연결 오류(인터넷 확인): ${it.javaClass.simpleName} ${it.message.orEmpty().take(60)}"
     }.getOrNull()
+
+    /** 카카오 오류 코드를 알아듣기 쉬운 말로 */
+    fun kakaoError(code: Int, body: String): String {
+        val msg = runCatching { JSONObject(body).optString("message") }.getOrNull().orEmpty()
+        return when {
+            code == 401 -> "카카오 키가 틀렸어요 (401) — REST API 키를 다시 복사해 넣어주세요"
+            code == 403 && ("OPEN_MAP_AND_LOCAL" in body || "disabled" in body) ->
+                "카카오맵 사용 설정이 꺼져 있어요 (403) — 카카오 개발자 사이트 → 내 앱 → 카카오맵 → 사용 설정 ON"
+            code == 403 -> "카카오 사용 권한 없음 (403) $msg"
+            code == 429 -> "카카오 하루 사용량 초과 (429)"
+            else -> "카카오 오류 ($code) $msg"
+        }.trim()
+    }
+
+    /** 설정의 [카카오 키 시험] — 결과를 사람 말로 돌려준다 (백그라운드에서 호출) */
+    fun testKey(key: String): String = runCatching {
+        if (key.isBlank()) return "키 칸이 비어 있어요"
+        val con = URL("https://dapi.kakao.com/v2/local/search/keyword.json?size=1&query=" + URLEncoder.encode("수원역", "UTF-8"))
+            .openConnection() as HttpURLConnection
+        con.setRequestProperty("Authorization", "KakaoAK ${key.trim()}")
+        con.connectTimeout = 7000; con.readTimeout = 7000
+        val code = con.responseCode
+        if (code != 200) return kakaoError(code, runCatching { con.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull().orEmpty())
+        val doc = JSONObject(con.inputStream.bufferedReader().use { it.readText() }).getJSONArray("documents").optJSONObject(0)
+        if (doc == null) "키는 맞는데 검색 결과가 없어요" else "✅ 카카오 키 정상!\n'수원역' 검색 → ${doc.optString("place_name")}\n(${doc.optString("address_name")})"
+    }.getOrElse { "카카오에 연결 못 했어요 (인터넷 확인): ${it.javaClass.simpleName} ${it.message.orEmpty().take(60)}" }
 }
+
