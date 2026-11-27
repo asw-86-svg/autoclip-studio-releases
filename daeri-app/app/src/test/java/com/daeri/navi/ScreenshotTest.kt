@@ -56,7 +56,7 @@ class ScreenshotTest {
     @Test fun bubble() {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
         val v = CallReaderService.makeBubbleView(RuntimeEnvironment.getApplication())
-        v.text = "출 - 🚶5분\n출 → 도 🚗43분\n제휴"
+        v.text = CallReaderService.bubbleText(listOf("출 - 🚶5분", "출 → 도 🚗43분"), partner = true)
         v.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         v.layout(0, 0, v.measuredWidth, v.measuredHeight)
         val bmp = Bitmap.createBitmap(v.measuredWidth + 40, v.measuredHeight + 40, Bitmap.Config.ARGB_8888)

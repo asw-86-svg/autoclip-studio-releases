@@ -30,6 +30,23 @@ import kotlin.math.abs
 class CallReaderService : AccessibilityService() {
 
     companion object {
+        /** 제휴 콜이면 "출 → 도" 의 '도' 옆에 빨간 (제) */
+        fun bubbleText(lines: List<String>, partner: Boolean): CharSequence {
+            val sb = android.text.SpannableStringBuilder()
+            lines.forEachIndexed { i, l ->
+                if (i > 0) sb.append("\n")
+                val mark = "출 → 도"
+                if (partner && l.startsWith(mark)) {
+                    sb.append(mark)
+                    val st = sb.length
+                    sb.append("(제)")
+                    sb.setSpan(android.text.style.ForegroundColorSpan(0xFFFF3B30.toInt()), st, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sb.append(l.removePrefix(mark))
+                } else sb.append(l)
+            }
+            return sb
+        }
+
         /** 말풍선 모양 (캡처 테스트에서도 같은 모양을 쓰려고 따로 둠) */
         fun makeBubbleView(ctx: android.content.Context): TextView {
             fun dp(v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
@@ -258,8 +275,7 @@ class CallReaderService : AccessibilityService() {
         val lines = ArrayList<String>()
         // 출발지·도착지 이름은 빼고 시간만 (새 콜 직후엔 '시간 계산 중…')
         lines += timeLines.ifEmpty { if (expanded) listOf("시간 계산 중…") else listOf("출/도") }
-        if (c.partner) lines += "제휴"
-        b.text = lines.joinToString("\n")
+        b.text = bubbleText(lines, c.partner)
         b.textSize = 13f
     }
 
