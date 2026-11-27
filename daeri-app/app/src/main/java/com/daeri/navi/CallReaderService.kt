@@ -38,8 +38,11 @@ class CallReaderService : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var scanScheduled = false
-    private var lastScan = 0L
+    // 화면 읽기는 뒤쪽 전용 스레드에서 (대리내비·대리앱 화면이 버벅이지 않게)
+    private val scanThread = android.os.HandlerThread("daeri-scan").apply { start() }
+    private val bg = Handler(scanThread.looper)
+    @Volatile private var pendingAt = 0L
+    private val scanTask = Runnable { pendingAt = 0L; scan() }
     private var bubble: TextView? = null
 
     override fun onServiceConnected() {
@@ -49,6 +52,7 @@ class CallReaderService : AccessibilityService() {
 
     override fun onDestroy() {
         hideBubble()
+        scanThread.quitSafely()
         instance = null
         super.onDestroy()
     }
@@ -56,39 +60,45 @@ class CallReaderService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val pkg = event?.packageName?.toString() ?: return
-        if (pkg == packageName || pkg in IGNORE_PKGS || detectPaused) return
-        // 카카오대리처럼 잠깐 떴다 사라지는 팝업도 잡도록: 바로 한 번 읽고, 이어지는 변화는 0.3초 뒤 한 번 더
-        val now = android.os.SystemClock.uptimeMillis()
-        if (now - lastScan >= 250) {
-            lastScan = now
-            scan()
-        } else if (!scanScheduled) {
-            scanScheduled = true
-            handler.postDelayed({ scanScheduled = false; lastScan = android.os.SystemClock.uptimeMillis(); scan() }, 300)
-        }
+        if (event == null || detectPaused) return
+        val type = event.eventType
+        if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) return
+        val pkg = event.packageName?.toString()
+        if (pkg != null && (pkg == packageName || pkg in IGNORE_PKGS || !isCallApp(pkg))) return
+        // 새 화면·팝업이 뜨면 거의 바로(0.08초), 화면 안 내용이 바뀌는 건 모아서 0.45초에 한 번
+        val windowChange = type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || type == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        schedule(if (windowChange) 80L else 450L)
     }
 
-    private val callAppCache = HashMap<String, Boolean>()
+    private fun schedule(delay: Long) {
+        val at = android.os.SystemClock.uptimeMillis() + delay
+        val p = pendingAt
+        if (p != 0L && p <= at) return // 이미 더 빨리 읽기로 예약됨
+        bg.removeCallbacks(scanTask)
+        pendingAt = at
+        bg.postAtTime(scanTask, at)
+    }
+
+    private val callAppCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     /** 대리·탁송 앱만 읽는다. 카톡·문자·브라우저·채팅앱 등은 '출발/도착' 글자가 있어도 무시 */
     private fun isCallApp(pkg: String): Boolean = callAppCache.getOrPut(pkg) {
-        if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) return@getOrPut true
-        val label = appLabel(pkg)
-        listOf("대리", "로지", "콜마너", "탁송", "기사").any { it in label }
+        if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) true
+        else appLabel(pkg).let { label -> listOf("대리", "로지", "콜마너", "탁송", "기사").any { it in label } }
     }
 
+    /** 뒤쪽 스레드에서 실행 */
     private fun scan() {
         // 지금 화면 + 다른 앱 위에 떠 있는 팝업 창까지 모두 읽는다
         val roots = LinkedHashMap<Int, AccessibilityNodeInfo>()
-        rootInActiveWindow?.let { roots[it.windowId] = it }
+        runCatching { rootInActiveWindow?.let { roots[it.windowId] = it } }
         runCatching { windows.forEach { w -> w.root?.let { r -> roots.putIfAbsent(r.windowId, r) } } }
         for (root in roots.values) {
             val pkg = root.packageName?.toString().orEmpty()
             if (pkg.isEmpty() || pkg == packageName || pkg in IGNORE_PKGS) continue
             if (!isCallApp(pkg)) continue
             val texts = ArrayList<String>()
-            collect(root, texts, 0)
+            runCatching { collect(root, texts, 0, intArrayOf(0)) }
             if (texts.isEmpty()) continue
             val looks = CallParser.looksLikeCall(texts.joinToString("\n"))
             Store.addDump(this, appName(pkg), texts)
@@ -97,35 +107,44 @@ class CallReaderService : AccessibilityService() {
             if (call.originRaw.isBlank() && call.destRaw.isBlank()) continue
             if (call.key == Store.current(this)?.key) return
             Store.setCurrent(this, call)
-            showBubble()
-            pulse()
-            bubbleEta(call)
+            handler.post { showBubble(); pulse(); bubbleEta(call) }
             return
         }
     }
 
-    /** 말풍선에 출발지까지 도보 시간 표시 (멀면 차 시간) */
-    private fun bubbleEta(call: CallInfo) {
+    /** 말풍선: 1줄 출발지까지(걸어서 20분 이하 🚶, 넘으면 🚌) / 2줄 출발→도착 차량 시간 🚗 */
+    fun bubbleEta(call: CallInfo) {
         bubble?.text = "출/도"
-        bubble?.setPadding(0, 0, 0, 0)
         Loc.current(this) { here ->
-            if (here == null) return@current
-            Thread {
-                val o = Geo.resolve(this, call.originQueries) ?: return@Thread
-                val t = Route.toOrigin(Route.straightKm(here, o))
-                val min = (t.sec + 59) / 60
-                val label = if (t.walk) "🚶${min}분" else "🚌약${min}분"
-                handler.post { if (Store.current(this)?.key == call.key) bubble?.text = "출발지까지\n$label" }
-            }.start()
+            bg.post {
+                val o = Geo.resolve(this, call.originQueries)
+                val d = Geo.resolve(this, call.destQueries)
+                val lines = ArrayList<String>()
+                if (here != null && o != null) {
+                    val t = Route.toOrigin(Route.straightKm(here, o))
+                    val min = (t.sec + 59) / 60
+                    lines += "출발지까지 " + if (t.walk) "🚶${min}분" else "🚌약${min}분"
+                }
+                if (o != null && d != null) lines += "출→도 🚗${shortDur(Route.drive(this, o, d).sec)}"
+                if (lines.isNotEmpty()) handler.post {
+                    if (Store.current(this)?.key == call.key) bubble?.text = lines.joinToString("\n")
+                }
+            }
         }
     }
 
-    private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
-        if (node == null || depth > 60) return
+    private fun shortDur(sec: Int): String {
+        val m = (sec + 59) / 60
+        return if (m >= 60) "${m / 60}시간${if (m % 60 > 0) " ${m % 60}분" else ""}" else "${m}분"
+    }
+
+    private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int, count: IntArray) {
+        if (node == null || depth > 60 || count[0] > 900) return
+        count[0]++
         val t = node.text?.toString()?.takeIf { it.isNotBlank() }
             ?: node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
         if (t != null) out += t
-        for (i in 0 until node.childCount) collect(node.getChild(i), out, depth + 1)
+        for (i in 0 until node.childCount) collect(node.getChild(i), out, depth + 1, count)
     }
 
     private fun appName(pkg: String): String = when {
@@ -148,12 +167,15 @@ class CallReaderService : AccessibilityService() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = TextView(this).apply {
             text = "출/도"
-            textSize = 12f
-            setLineSpacing(0f, 0.95f)
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setLineSpacing(dp(2).toFloat(), 1f)
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
+            minWidth = dp(64); minHeight = dp(64)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
+                cornerRadius = dp(32).toFloat()
                 setColor(0xEE1E6FE0.toInt())
                 setStroke(dp(2), 0xFFFFFFFF.toInt())
             }
@@ -161,7 +183,7 @@ class CallReaderService : AccessibilityService() {
         }
         val (bx, by) = Store.bubblePos(this)
         val lp = WindowManager.LayoutParams(
-            dp(84), dp(84),
+            WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,

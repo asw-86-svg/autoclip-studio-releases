@@ -92,6 +92,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        Store.cleanupJunk(this)
         if (!Loc.hasPerm(this) && !askedLocation) {
             askedLocation = true
             requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), 1)
@@ -129,7 +130,7 @@ class MainActivity : Activity() {
             return false
         }
         Store.setCurrent(this, c)
-        CallReaderService.instance?.showBubble()
+        CallReaderService.instance?.let { it.showBubble(); it.bubbleEta(c) }
         return true
     }
 
@@ -291,7 +292,7 @@ class MainActivity : Activity() {
             }
             if (c.notes.isNotEmpty()) {
                 addView(space(6))
-                addView(text(c.notes, 13f, 0xFFDDDDDD.toInt()))
+                addView(text(c.notes.take(300) + if (c.notes.length > 300) "…" else "", 13f, 0xFFDDDDDD.toInt()))
             }
             addView(space(6))
             addView(button("운행 끝 (말풍선 숨기기)", 0xFF4A4A50.toInt()) {
@@ -319,7 +320,7 @@ class MainActivity : Activity() {
             return
         }
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
-        hist.forEach { h ->
+        hist.take(50).forEach { h ->
             root.addView(card().apply {
                 setOnClickListener { openCall(h) }
                 addView(LinearLayout(this@MainActivity).apply {
@@ -362,14 +363,18 @@ class MainActivity : Activity() {
 
     private fun openCall(h: CallInfo) {
         Store.setCurrent(this, h)
-        CallReaderService.instance?.showBubble()
+        CallReaderService.instance?.let { it.showBubble(); it.bubbleEta(h) }
         go(Screen.CALL)
     }
 
+    private val iconCache = HashMap<String, android.graphics.drawable.Drawable?>()
+
     /** 설치된 대리 앱의 진짜 아이콘 (없으면 글자 아이콘) */
     private fun appIcon(h: CallInfo): View {
-        val icon = runCatching { if (h.pkg.isNotEmpty()) packageManager.getApplicationIcon(h.pkg) else null }.getOrNull()
-            ?: return iconBox(appEmoji(h.source))
+        val icon = if (h.pkg.isEmpty()) null else iconCache.getOrPut(h.pkg) {
+            runCatching { packageManager.getApplicationIcon(h.pkg) }.getOrNull()
+        }
+        if (icon == null) return iconBox(appEmoji(h.source))
         return android.widget.ImageView(this).apply {
             setImageDrawable(icon)
             setPadding(dp(8), dp(8), dp(8), dp(8))
