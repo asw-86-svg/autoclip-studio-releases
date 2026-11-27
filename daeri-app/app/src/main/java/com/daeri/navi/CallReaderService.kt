@@ -193,13 +193,10 @@ class CallReaderService : AccessibilityService() {
         val b = bubble ?: return
         val expanded = System.currentTimeMillis() < expandedUntil
         val lines = ArrayList<String>()
-        if (expanded) {
-            lines += "🔵 " + c.originDisplay.take(16)
-            lines += "🔴 " + c.destDisplay.take(16)
-        }
+        // 출발지·도착지 이름은 빼고 시간만 (새 콜 직후엔 '시간 계산 중…')
         lines += timeLines.ifEmpty { if (expanded) listOf("시간 계산 중…") else listOf("출/도") }
         b.text = lines.joinToString("\n")
-        b.textSize = if (expanded) 15f else 14f
+        b.textSize = 14f
     }
 
     /** 말풍선: "출 - 🚶12분"(걸어서 20분 넘으면 🚌) / "출 → 도 🚗55분" */
