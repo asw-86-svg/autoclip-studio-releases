@@ -517,8 +517,8 @@ class MainActivity : Activity() {
             addView(text(dot(blue, "●  출발지"), 14f, blue, bold = true))
             addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
             addView(row(listOf(
-                button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
-                button("🚌 네이버지도", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
+                slim(button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) }),
+                slim(button("🚌 네이버지도", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) }),
             )))
 
             addView(View(this@MainActivity).apply {
@@ -536,13 +536,16 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
                 addView(text("🧭 출발 → 도착 경로", 15f, white, bold = true))
                 addView(row(listOf(
-                    button("🚗 카카오맵", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
-                    button("🚗 네이버지도", naverGreen) { fullRoute(App.NAVER, c) },
+                    slim(button("🚗 카카오맵", kakaoYellow, black) { fullRoute(App.KAKAO, c) }),
+                    slim(button("🚗 네이버지도", naverGreen) { fullRoute(App.NAVER, c) }),
                 )))
             })
             addView(text("출발지 버튼은 대중교통, 경로 버튼은 자동차 길안내로 열려요", 12f, 0xFF7D7D84.toInt()).apply { setPadding(0, dp(8), 0, 0) })
         })
     }
+
+    /** 지도앱 버튼을 얇게 (콜 상세에서 지도를 크게 보이도록) */
+    private fun slim(b: Button) = b.apply { minHeight = dp(42); minimumHeight = dp(42); setPadding(0, 0, 0, 0); textSize = 15f }
 
     /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
     private fun addrRow(addr: String, color: Int, onFocus: () -> Unit) = LinearLayout(this).apply {
@@ -613,7 +616,7 @@ class MainActivity : Activity() {
         return android.widget.FrameLayout(this).apply {
             background = rounded(innerBg, 14)
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(330)).apply { topMargin = dp(14) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(440)).apply { topMargin = dp(14) }
             addView(web, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }
