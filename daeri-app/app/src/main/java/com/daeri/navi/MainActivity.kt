@@ -26,6 +26,7 @@ import com.daeri.navi.MapLauncher.Mode
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
+import com.daeri.navi.Store.kakaoBubble
 import com.daeri.navi.Store.kakaoKey
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -668,6 +669,14 @@ class MainActivity : Activity() {
                 }
             }))
             addView(text("'안 띄움'이어도 콜 읽기와 받은 콜 목록 기록은 계속 돼요.", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
+            addView(button(
+                "카카오T 대리 콜에도 말풍선 띄우기: " + if (kakaoBubble) "켜짐" else "꺼짐",
+                if (kakaoBubble) blue else innerBg,
+            ) {
+                kakaoBubble = !kakaoBubble
+                toast(if (kakaoBubble) "카카오 콜도 말풍선을 바꿔요" else "카카오 콜은 말풍선을 안 바꿔요 (목록·일지 기록은 계속)")
+                render()
+            })
         })
 
         root.addView(card().apply {

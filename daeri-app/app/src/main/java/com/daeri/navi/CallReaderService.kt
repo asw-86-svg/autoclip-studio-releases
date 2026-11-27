@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.detectPaused
+import com.daeri.navi.Store.kakaoBubble
 import kotlin.math.abs
 
 /**
@@ -124,7 +125,7 @@ class CallReaderService : AccessibilityService() {
             if (call.originRaw.isBlank() || call.destRaw.isBlank()) return@post
             if (call.key == Store.current(this)?.key) return@post
             Store.setCurrent(this, call.copy(accepted = false))
-            handler.post { showBubble(); pulse(); bubbleEta(call); keepBubble() }
+            if (bubbleFor(pkg)) handler.post { showBubble(); pulse(); bubbleEta(call); keepBubble() }
         }
     }
 
@@ -156,15 +157,18 @@ class CallReaderService : AccessibilityService() {
             if (call.originRaw.isBlank() || call.destRaw.isBlank()) continue
             if (call.key == Store.current(this)?.key) {
                 // 같은 콜: 5분 유지 타이머 다시 시작, 말풍선이 숨겨져 있으면 다시 띄운다
-                handler.post { keepBubble(); if (bubble == null) { showBubble(); bubbleEta(call) } }
+                if (bubbleFor(pkg)) handler.post { keepBubble(); if (bubble == null) { showBubble(); bubbleEta(call) } }
                 return
             }
             Store.setCurrent(this, call)
             status("✅ ${appName(pkg)} 콜 읽음: ${call.originDisplay} → ${call.destDisplay}")
-            handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call); keepBubble() }
+            if (bubbleFor(pkg)) handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call); keepBubble() }
             return
         }
     }
+
+    /** 카카오T 대리 콜은 설정에서 켜지 않으면 말풍선을 바꾸지 않는다 (콜카드에 지도가 이미 나옴) */
+    private fun bubbleFor(pkg: String) = kakaoBubble || "kakao" !in pkg.lowercase()
 
     /** 마지막으로 콜을 본 뒤 5분 동안 말풍선 내용 유지, 그 뒤엔 작은 '출/도'로 */
     private val BUBBLE_KEEP_MS = 5 * 60_000L

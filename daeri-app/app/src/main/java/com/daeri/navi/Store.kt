@@ -142,6 +142,11 @@ object Store {
         if (p(ctx).getString("goalDay", "") == day) p(ctx).getInt("goal", 0) else null
     fun setGoal(ctx: Context, day: String, won: Int) = p(ctx).edit().putString("goalDay", day).putInt("goal", won).apply()
 
+    /** 카카오T 대리 콜에도 말풍선을 띄울지 (기본: 안 띄움 — 카카오 콜카드에 지도·시간이 이미 나옴) */
+    var Context.kakaoBubble: Boolean
+        get() = p(this).getBoolean("kakaoBubble", false)
+        set(v) = p(this).edit().putBoolean("kakaoBubble", v).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
