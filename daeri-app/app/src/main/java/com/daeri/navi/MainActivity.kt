@@ -23,6 +23,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.daeri.navi.MapLauncher.App
 import com.daeri.navi.MapLauncher.Mode
+import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoKey
@@ -588,6 +589,21 @@ class MainActivity : Activity() {
             addView(text("✅ 접근성(자동 읽기) 허용됨", 16f, white, bold = true))
             addView(text("홈의 출근/퇴근 버튼으로 켜고 끌 수 있어요.", 13f, grey))
         } else accessibilityWarning())
+
+        // 말풍선(출/도) 표시 설정
+        root.addView(card().apply {
+            addView(text("말풍선(출/도) 표시", 16f, white, bold = true))
+            val labels = listOf("항상", "대리 앱\n볼 때만", "안 띄움")
+            addView(row(labels.mapIndexed { i, l ->
+                button(l, if (bubbleMode == i) blue else innerBg) {
+                    bubbleMode = i
+                    CallReaderService.instance?.applyBubbleMode()
+                    toast(when (i) { 0 -> "말풍선을 항상 보여줘요"; 1 -> "대리 앱 화면에서만 보여줘요"; else -> "말풍선을 안 띄워요 (콜 읽기·기록은 계속)" })
+                    render()
+                }
+            }))
+            addView(text("'안 띄움'이어도 콜 읽기와 받은 콜 목록 기록은 계속 돼요.", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
+        })
 
         root.addView(card().apply {
             addView(text("집(복귀) 주소", 13f, grey))

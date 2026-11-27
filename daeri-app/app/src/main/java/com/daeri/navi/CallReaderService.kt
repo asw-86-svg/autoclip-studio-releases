@@ -17,6 +17,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
+import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.detectPaused
 import kotlin.math.abs
 
@@ -29,6 +30,12 @@ class CallReaderService : AccessibilityService() {
     companion object {
         @Volatile var instance: CallReaderService? = null
             private set
+
+        /** 화면 앱이 바뀐 걸로 치지 않는 것 (상단바·키보드 등) */
+        private val SYSTEM_PKGS = setOf(
+            "com.android.systemui", "com.samsung.android.honeyboard", "com.google.android.inputmethod.korean",
+            "com.google.android.inputmethod.latin", "com.samsung.android.app.aodservice",
+        )
 
         private val IGNORE_PKGS = setOf(
             "com.android.systemui", "com.sec.android.app.launcher", "com.google.android.apps.nexuslauncher",
@@ -64,6 +71,11 @@ class CallReaderService : AccessibilityService() {
         val type = event.eventType
         if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) return
         val pkg = event.packageName?.toString()
+        // '대리 앱 볼 때만' 모드: 지금 화면 앱이 바뀌면 말풍선 보이기/숨기기
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != null && pkg !in SYSTEM_PKGS) {
+            fgIsCallApp = pkg != packageName && isCallApp(pkg)
+            applyBubbleMode()
+        }
         if (pkg != null && (pkg == packageName || pkg in IGNORE_PKGS || !isCallApp(pkg))) return
         // 대리 앱이 알림으로만 콜을 알려줄 때 (화면이 홈이어도)
         if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
@@ -229,8 +241,20 @@ class CallReaderService : AccessibilityService() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     @SuppressLint("ClickableViewAccessibility")
+    /** 지금 화면에 떠 있는 앱이 대리 앱인지 */
+    @Volatile private var fgIsCallApp = true
+
+    /** 설정(항상 / 대리 앱 볼 때만 / 안 띄움)에 맞춰 말풍선을 보이거나 숨긴다 */
+    fun applyBubbleMode() {
+        val mode = bubbleMode
+        if (mode == 2) { hideBubble(); return }
+        if (bubble == null && Store.current(this) != null) showBubble()
+        bubble?.visibility = if (mode == 1 && !fgIsCallApp) View.GONE else View.VISIBLE
+    }
+
     fun showBubble() {
-        if (bubble != null) return
+        if (bubbleMode == 2) return
+        if (bubble != null) { applyBubbleVisibility(); return }
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = TextView(this).apply {
             text = "출/도"
@@ -285,6 +309,11 @@ class CallReaderService : AccessibilityService() {
             if (r - l != or2 - ol || b - t != ob - ot) handler.post { placeBubble() }
         }
         v.post { placeBubble() }
+        applyBubbleVisibility()
+    }
+
+    private fun applyBubbleVisibility() {
+        bubble?.visibility = if (bubbleMode == 1 && !fgIsCallApp) View.GONE else View.VISIBLE
     }
 
     private var bubbleLp: WindowManager.LayoutParams? = null

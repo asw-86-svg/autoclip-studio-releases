@@ -132,6 +132,11 @@ object Store {
         get() = p(this).getString("kakaoKey", "").orEmpty()
         set(v) = p(this).edit().putString("kakaoKey", v).apply()
 
+    /** 말풍선 표시: 0 = 항상, 1 = 대리 앱 볼 때만, 2 = 안 띄움 */
+    var Context.bubbleMode: Int
+        get() = p(this).getInt("bubbleMode", 0)
+        set(v) = p(this).edit().putInt("bubbleMode", v).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
