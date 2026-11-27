@@ -491,7 +491,7 @@ class MainActivity : Activity() {
                 addView(appIcon(c))
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-                    addView(text(c.source, 19f, white, bold = true).apply { maxLines = 1 })
+                    addView(text(c.source, 17f, white, bold = true).apply { maxLines = 1 })
                     addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
                         textSize = 12f; setPadding(dp(8), dp(2), dp(8), dp(2))
                         layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(4) }
@@ -504,7 +504,7 @@ class MainActivity : Activity() {
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END
                         if (c.recommended) addView(recBadge())
-                        addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 27f, blue, bold = true).apply { maxLines = 1 })
+                        addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 24f, blue, bold = true).apply { maxLines = 1 })
                     })
                 })
             })
@@ -514,7 +514,7 @@ class MainActivity : Activity() {
 
             // 출발지 → 대중교통 길안내
             addView(space(14))
-            addView(text(dot(blue, "●  출발지"), 14f, blue, bold = true))
+            addView(text(dot(blue, "●  출발지"), 13f, blue, bold = true))
             addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
             addView(row(listOf(
                 slim(button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) }),
@@ -527,14 +527,14 @@ class MainActivity : Activity() {
             })
 
             // 도착지 + 출발→도착 경로 (자동차)
-            addView(text(dot(red, "●  도착지"), 14f, red, bold = true))
+            addView(text(dot(red, "●  도착지"), 13f, red, bold = true))
             addView(addrRow(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red) { callWeb?.evaluateJavascript("focusPoint('d')", null) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
                 background = rounded(innerBg, 14)
                 layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
-                addView(text("🧭 출발 → 도착 경로", 15f, white, bold = true))
+                addView(text("🧭 출발 → 도착 경로", 14f, white, bold = true))
                 addView(row(listOf(
                     slim(button("🚗 카카오맵", kakaoYellow, black) { fullRoute(App.KAKAO, c) }),
                     slim(button("🚗 네이버지도", naverGreen) { fullRoute(App.NAVER, c) }),
@@ -545,18 +545,18 @@ class MainActivity : Activity() {
     }
 
     /** 지도앱 버튼을 얇게 (콜 상세에서 지도를 크게 보이도록) */
-    private fun slim(b: Button) = b.apply { minHeight = dp(42); minimumHeight = dp(42); setPadding(0, 0, 0, 0); textSize = 15f }
+    private fun slim(b: Button) = b.apply { minHeight = dp(42); minimumHeight = dp(42); setPadding(0, 0, 0, 0); textSize = 14f }
 
     /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
     private fun addrRow(addr: String, color: Int, onFocus: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(text(addr, 21f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        addView(text(addr, 18f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         addView(TextView(this@MainActivity).apply {
-            text = "⌖"; textSize = 30f; setTextColor(color); gravity = Gravity.CENTER
+            text = "⌖"; textSize = 26f; setTextColor(color); gravity = Gravity.CENTER
             background = rounded(innerBg, 12)
             setOnClickListener { onFocus() }
             contentDescription = "지도에서 보기"
-        }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { leftMargin = dp(10) })
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(10) })
     }
 
     /** 앱 안의 작은 지도 (Leaflet + 무료 지도). 출발·도착 위치를 찾으면 핀을 찍는다 */
