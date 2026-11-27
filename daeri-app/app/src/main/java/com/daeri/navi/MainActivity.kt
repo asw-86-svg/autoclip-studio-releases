@@ -107,6 +107,8 @@ class MainActivity : Activity() {
             addView(footer, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
         Store.cleanupJunk(this)
+        // 광고 목록 새로 확인 (1시간마다). 바뀌면 홈 화면 다시 그림
+        Ads.refresh(this) { runOnUiThread { if (screen == Screen.HOME && !isFinishing) render() } }
         handleIntent(intent)
     }
 
@@ -297,6 +299,58 @@ class MainActivity : Activity() {
             addView(divider())
             addView(menuItem("⚙️", "설정", null) { go(Screen.SETTINGS) })
         })
+
+        // 광고 (광고가 없으면 칸 자체가 안 보임)
+        adView()?.let { root.addView(it) }
+    }
+
+    /** 직접 받는 광고 배너 — 깃허브 ads.json 에서 가져온 것 */
+    private fun adView(): View? {
+        val a = Ads.pick(this) ?: return null
+        val open = {
+            if (a.link.isNotBlank()) runCatching {
+                val uri = Uri.parse(a.link)
+                startActivity(Intent(if (a.link.startsWith("tel:")) Intent.ACTION_DIAL else Intent.ACTION_VIEW, uri))
+            }.onFailure { toast("열 수 없어요") }
+        }
+        val adTag = text("광고", 11f, grey).apply {
+            setPadding(dp(7), dp(1), dp(7), dp(1)); background = rounded(0x33FFFFFF, 6)
+        }
+        val img = a.image.takeIf { it.isNotBlank() }?.let { Ads.cachedImage(this, it) }
+        return card(color = a.bg ?: cardBg).apply {
+            setOnClickListener { open() }
+            if (img != null) {
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                addView(android.widget.FrameLayout(this@MainActivity).apply {
+                    addView(android.widget.ImageView(this@MainActivity).apply {
+                        setImageBitmap(img); adjustViewBounds = true
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        clipToOutline = true; background = rounded(cardBg, 12)
+                    }, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+                    addView(adTag, android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6); topMargin = dp(6) })
+                })
+            } else {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            addView(adTag)
+                            addView(text(a.title, 17f, white, bold = true).apply { setPadding(dp(8), 0, 0, 0) })
+                        })
+                        if (a.text.isNotBlank()) addView(text(a.text, 13f, 0xFFCCCCD2.toInt()).apply { setPadding(0, dp(6), 0, 0) })
+                    }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    if (a.link.isNotBlank()) addView(Button(this@MainActivity).apply {
+                        text = a.button.ifBlank { if (a.link.startsWith("tel:")) "📞 전화" else "보기 ›" }
+                        isAllCaps = false; textSize = 14f; setTextColor(white); setTypeface(typeface, Typeface.BOLD)
+                        background = rounded(blue, 12); minHeight = dp(44); minimumHeight = dp(44)
+                        setPadding(dp(14), 0, dp(14), 0)
+                        setOnClickListener { open() }
+                    }, LinearLayout.LayoutParams(WRAP_CONTENT, dp(44)).apply { leftMargin = dp(10) })
+                })
+            }
+        }
     }
 
     private fun clockIn(today: String) {

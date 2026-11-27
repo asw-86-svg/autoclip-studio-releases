@@ -77,6 +77,10 @@ class ScreenshotTest {
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 4600)
     @Test fun log() = shot("log", "log")
+    @Test fun homeAd() {
+        Ads.setJson(RuntimeEnvironment.getApplication(), """{"ads":[{"id":"t1","title":"○○ 대리기사 보험","text":"하루 3,000원부터 · 24시간 상담","link":"tel:01000000000","button":"📞 전화"}]}""")
+        shot("home_ad", "home", 4400)
+    }
     @Test fun report() {
         val ctx = RuntimeEnvironment.getApplication()
         val now = System.currentTimeMillis()
