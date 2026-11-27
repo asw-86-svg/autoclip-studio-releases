@@ -556,6 +556,7 @@ class MainActivity : Activity() {
         "콜마너" in source -> "콜"
         "로지" in source -> "로"
         "카카오" in source -> "K"
+        "T맵" in source || "TMAP" in source.uppercase() -> "T"
         else -> "✍"
     }
 
@@ -792,7 +793,7 @@ class MainActivity : Activity() {
             addView(text("▾", 18f, grey).apply { setPadding(0, 0, dp(14), 0) })
         }
         val pick = View.OnClickListener {
-            val names = arrayOf("카카오대리", "로지", "콜마너", "I-Driver", "직접 입력…")
+            val names = arrayOf("카카오대리", "로지", "콜마너", "I-Driver", "T맵대리", "직접 입력…")
             AlertDialog.Builder(this).setTitle("프로그램").setItems(names) { _, i ->
                 if (i < names.size - 1) program.setText(names[i])
                 else {

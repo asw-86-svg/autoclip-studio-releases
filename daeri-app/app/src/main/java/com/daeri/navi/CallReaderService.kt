@@ -176,7 +176,7 @@ class CallReaderService : AccessibilityService() {
     private fun isCallApp(pkg: String): Boolean = callAppCache.getOrPut(pkg) {
         // 최강대리기사 같은 기록·관리용 앱은 대리 앱이 아니므로 읽지 않는다
         if ("choigang" in pkg.lowercase() || appLabel(pkg).let { "최강" in it }) false
-        else if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) true
+        else if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson", "tmap.driver", "tmapdriver", "tmap.daeri").any { it in pkg.lowercase() }) true
         else appLabel(pkg).let { label ->
             listOf("대리", "로지", "콜마너", "탁송", "기사", "드라이버", "커넥트").any { it in label } || "driver" in label.lowercase()
         }
@@ -333,6 +333,7 @@ class CallReaderService : AccessibilityService() {
         "callmaner" in pkg -> "콜마너"
         "logi" in pkg -> "로지"
         "kakao" in pkg -> "카카오T 대리"
+        "tmap" in pkg.lowercase() -> "T맵대리"
         else -> appLabel(pkg)
     }
 
