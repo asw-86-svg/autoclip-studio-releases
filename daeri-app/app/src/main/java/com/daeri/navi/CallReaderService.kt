@@ -124,7 +124,7 @@ class CallReaderService : AccessibilityService() {
             if (call.originRaw.isBlank() || call.destRaw.isBlank()) return@post
             if (call.key == Store.current(this)?.key) return@post
             Store.setCurrent(this, call.copy(accepted = false))
-            handler.post { showBubble(); pulse(); bubbleEta(call) }
+            handler.post { showBubble(); pulse(); bubbleEta(call); keepBubble() }
         }
     }
 
@@ -152,17 +152,32 @@ class CallReaderService : AccessibilityService() {
             Store.addDump(this, appName(pkg), texts)
             if (!looks) continue
             val call = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
-            if (call.originRaw.isBlank() && call.destRaw.isBlank()) continue
+            // 콜창을 닫은 뒤 나오는 목록·메뉴 화면 글자로 덮어쓰지 않도록 출발·도착 둘 다 있어야 새 콜
+            if (call.originRaw.isBlank() || call.destRaw.isBlank()) continue
             if (call.key == Store.current(this)?.key) {
-                // 같은 콜: 말풍선이 숨겨져 있으면 다시 띄운다
-                handler.post { if (bubble == null) { showBubble(); bubbleEta(call) } }
+                // 같은 콜: 5분 유지 타이머 다시 시작, 말풍선이 숨겨져 있으면 다시 띄운다
+                handler.post { keepBubble(); if (bubble == null) { showBubble(); bubbleEta(call) } }
                 return
             }
             Store.setCurrent(this, call)
             status("✅ ${appName(pkg)} 콜 읽음: ${call.originDisplay} → ${call.destDisplay}")
-            handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call) }
+            handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call); keepBubble() }
             return
         }
+    }
+
+    /** 마지막으로 콜을 본 뒤 5분 동안 말풍선 내용 유지, 그 뒤엔 작은 '출/도'로 */
+    private val BUBBLE_KEEP_MS = 5 * 60_000L
+    private val resetBubble = Runnable {
+        bubbleCall = null
+        timeLines = emptyList()
+        bubble?.text = "출/도"
+        bubble?.textSize = 14f
+    }
+
+    private fun keepBubble() {
+        handler.removeCallbacks(resetBubble)
+        handler.postDelayed(resetBubble, BUBBLE_KEEP_MS)
     }
 
     /** 새 콜이 잡히면 이 시각까지 말풍선을 크게 펼쳐 출발지·도착지까지 보여준다 */
