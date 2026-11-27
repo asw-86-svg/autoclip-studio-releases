@@ -23,4 +23,10 @@ class RouteTest {
         assertTrue(!far.walk)
         assertTrue("대중교통 ${far.sec / 60}분", far.sec / 60 in 25..45)
     }
+
+    @Test fun 출발지까지_도보는_20분까지() {
+        assertTrue(Route.toOrigin(0.7).walk)          // 700m → 걸어서
+        assertTrue(!Route.toOrigin(3.0).walk)         // 3km → 걸으면 50분 → 차
+        assertTrue(Route.walkSec(0.7) <= Route.WALK_LIMIT_MIN * 60)
+    }
 }

@@ -72,6 +72,8 @@ class MainActivity : Activity() {
     private var reportPreview = false
     /** 콜 상세 지도 (⊙ 버튼으로 출발/도착 확대) */
     private var callWeb: android.webkit.WebView? = null
+    /** 콜 상세의 실시간 위치 끄기 */
+    private var stopWatch: (() -> Unit)? = null
     private var day: Calendar = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -6) }
     private var showDump = false
     private var callsShown = 50
@@ -119,6 +121,11 @@ class MainActivity : Activity() {
         super.onNewIntent(intent)
         handleIntent(intent)
         render()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopWatch?.invoke(); stopWatch = null
     }
 
     override fun onResume() {
@@ -199,6 +206,8 @@ class MainActivity : Activity() {
 
     // =================== 화면 그리기 ===================
     private fun render() {
+        // 콜 상세를 떠나면 실시간 위치 끄기 (배터리)
+        stopWatch?.invoke(); stopWatch = null; callWeb = null
         root.removeAllViews()
         footer.removeAllViews(); footer.visibility = View.GONE
         // 미리보기(화면 확인용): 퇴근 리포트만 그린다
@@ -559,25 +568,32 @@ class MainActivity : Activity() {
      * 지도 핀 옆 글씨 (카카오 콜카드처럼): 출발 "도보 714m(약12분)" 또는 "🚌 약 35분", 도착 "약 23분 운행".
      * 콜카드에 적힌 값이 있으면 그대로, 없으면 내 위치·주소로 계산. 백그라운드에서 호출.
      */
-    private fun pinInfo(c: CallInfo, o: Geo.Pt?, d: Geo.Pt?): Pair<String, String> {
-        fun dist(m: Int) = if (m < 1000) "${(m + 5) / 10 * 10}m" else String.format(Locale.KOREA, "%.1fkm", m / 1000.0)
-        val here = Loc.lastPt(this)
-        val oInfo = when {
-            c.walkMin in 1..Route.WALK_LIMIT_MIN -> "도보 ${dist((c.walkKm * 1000).toInt())}(약${c.walkMin}분)"
-            c.walkMin > Route.WALK_LIMIT_MIN -> "🚌 약${(Route.transitSec(c.walkKm / 1.25) + 59) / 60}분"
-            here != null && o != null -> {
-                val km = Route.straightKm(here, o)
-                val t = Route.toOrigin(km)
-                if (t.walk) "도보 ${dist((km * 1250).toInt())}(약${(t.sec + 59) / 60}분)" else "🚌 약${(t.sec + 59) / 60}분"
-            }
-            else -> ""
-        }
+    private fun pinInfo(c: CallInfo, o: Geo.Pt?, d: Geo.Pt?, here: Geo.Pt?): Pair<String, String> {
+        val oInfo = if (o != null) originInfo(c, o, here) else ""
         val dInfo = when {
             c.driveMin > 0 -> "약 ${c.driveMin}분 운행"
             o != null && d != null -> Route.drive(this, o, d).let { r -> "약 ${(r.sec + 59) / 60}분 운행 · ${dist(r.meters)}" }
             else -> ""
         }
         return oInfo to dInfo
+    }
+
+    private fun dist(m: Int) = if (m < 1000) "${(m + 5) / 10 * 10}m" else String.format(Locale.KOREA, "%.1fkm", m / 1000.0)
+
+    /**
+     * 출발지까지: 걸어서 20분 이하면 "도보 714m(약12분)", 넘으면 차로 "🚗 약 N분 · 5.2km".
+     * 내 위치를 알면 내 위치 기준, 모르면 콜카드에 적힌 도보 거리로. 백그라운드에서 호출 (길찾기 인터넷 사용).
+     */
+    private fun originInfo(c: CallInfo, o: Geo.Pt, here: Geo.Pt?): String {
+        if (here == null) {
+            if (c.walkMin in 1..Route.WALK_LIMIT_MIN) return "도보 ${dist((c.walkKm * 1000).toInt())}(약${c.walkMin}분)"
+            if (c.walkMin > Route.WALK_LIMIT_MIN) return Route.estimate(c.walkKm / 1.25).let { "🚗 약 ${(it.sec + 59) / 60}분 · ${dist(it.meters)}" }
+            return ""
+        }
+        val km = Route.straightKm(here, o)
+        val walk = Route.walkSec(km)
+        return if (walk <= Route.WALK_LIMIT_MIN * 60) "도보 ${dist((km * 1250).toInt())}(약${(walk + 59) / 60}분)"
+        else Route.drive(this, here, o).let { r -> "🚗 약 ${(r.sec + 59) / 60}분 · ${dist(r.meters)}" }
     }
 
     /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
@@ -674,11 +690,27 @@ class MainActivity : Activity() {
             // 못 찾았으면 이유(카카오 키 오류 등)를 지도에 글자로
             val why = if (o == null || d == null) Geo.lastError.replace("\\", "").replace("'", "") else ""
             fun q(t: String) = "'" + t.replace("\\", "").replace("'", "").replace("\n", " ") + "'"
-            val (oInfo, dInfo) = pinInfo(c, o, d)
+            val (oInfo, dInfo) = pinInfo(c, o, d, Loc.lastPt(this))
             val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })},${q(oInfo)},${q(dInfo)});"
             runOnUiThread {
-                if (isFinishing) return@runOnUiThread
-                if (loaded) web.evaluateJavascript(call, null) else pending = call
+                if (isFinishing || callWeb !== web) return@runOnUiThread
+                if (loaded) web.evaluateJavascript(call, null) else pending = (pending ?: "") + call
+                // 실시간 내 위치: 지도에 파란 점 + 출발지까지 시간 다시 계산 (100m 넘게 움직였거나 1분 지나면)
+                stopWatch?.invoke()
+                var lastCalc: Geo.Pt? = null; var lastAt = 0L
+                stopWatch = Loc.watch(this) { here ->
+                    if (callWeb !== web) return@watch
+                    val me = "setMe(${here.lat},${here.lng});"
+                    if (loaded) web.evaluateJavascript(me, null) else pending = (pending ?: "") + me
+                    val moved = lastCalc?.let { Route.straightKm(it, here) * 1000 } ?: Double.MAX_VALUE
+                    if (o != null && (moved > 100 || System.currentTimeMillis() - lastAt > 60_000)) {
+                        lastCalc = here; lastAt = System.currentTimeMillis()
+                        Thread {
+                            val info = originInfo(c, o, here)
+                            runOnUiThread { if (callWeb === web && loaded) web.evaluateJavascript("updateInfo('o',${q(info)});", null) }
+                        }.start()
+                    }
+                }
             }
         }.start()
         return android.widget.FrameLayout(this).apply {
@@ -1707,8 +1739,8 @@ class MainActivity : Activity() {
 }
 
 /**
- * 주소 한 줄 맞춤: 칸 폭이 정해질 때(onMeasure) 18 → 12까지 줄여서 한 줄이 되면 그 크기,
- * 12로도 안 되면 15로 두 줄 (낱말 단위로 끊김). 글자가 잘려 안 보이는 일이 없다.
+ * 주소 맞춤: 칸 폭이 정해질 때(onMeasure) 18 → 15까지 줄여서 한 줄이 되면 그 크기,
+ * 그래도 길면 15로 두 줄(낱말 단위로 끊김, 최대 3줄). 글자가 잘려 안 보이는 일이 없다.
  */
 class FitAddrText(ctx: android.content.Context, private val addr: String, private val twoLine: String) : TextView(ctx) {
     private var lastW = -1
@@ -1721,13 +1753,13 @@ class FitAddrText(ctx: android.content.Context, private val addr: String, privat
             val pnt = android.text.TextPaint(paint)
             var chosen = -1f
             var sp = 18f
-            while (sp >= 12f) {
+            while (sp >= 15f) {
                 pnt.textSize = sp * dm.scaledDensity
                 if (android.text.StaticLayout.Builder.obtain(addr, 0, addr.length, pnt, w).build().lineCount == 1) { chosen = sp; break }
                 sp -= 1f
             }
             if (chosen > 0) { text = addr; maxLines = 1; paint.textSize = chosen * dm.scaledDensity; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, chosen) }
-            else { text = twoLine; maxLines = 2; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f) }
+            else { text = twoLine; maxLines = 3; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f) }
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }

@@ -32,6 +32,8 @@
   .info{display:flex;align-items:stretch;margin-bottom:4px;box-shadow:0 1px 5px rgba(0,0,0,.45);border-radius:6px;overflow:hidden;white-space:nowrap}
   .info b{color:#fff;font:700 13px sans-serif;padding:5px 7px}
   .info span{background:#fff;color:#111;font:700 13px sans-serif;padding:5px 8px}
+  /* 내 위치 (파란 점 + 퍼지는 원) */
+  .me{width:16px;height:16px;border-radius:50%;background:#2F80ED;border:3px solid #fff;box-shadow:0 0 0 8px rgba(47,128,237,.25),0 1px 4px rgba(0,0,0,.5)}
   .callout:after{content:"";position:absolute;left:50%;bottom:-7px;margin-left:-7px;border:7px solid transparent;border-bottom:0;border-top-color:#fff}
 </style>
 <script src="leaflet/leaflet.js"></script>
@@ -77,12 +79,17 @@
         });
       },
       focus: function (p) { map.setView([p[0], p[1]], 17); },
+      me: function (lat, lng) {
+        if (meOv) meOv.setLatLng([lat, lng]);
+        else meOv = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<div class="me" style="transform:translate(-50%,-50%)"></div>', iconSize: [0, 0]}), zIndexOffset: -100}).addTo(map);
+      },
       fit: function () {
         if (lastPts.length == 1) map.setView([lastPts[0][0], lastPts[0][1]], 15);
         else if (lastPts.length == 2) map.fitBounds([[lastPts[0][0], lastPts[0][1]], [lastPts[1][0], lastPts[1][1]]], {padding: [50, 50]});
       }
     };
     if (queued) { var q = queued; queued = null; setPoints.apply(null, q); }
+    if (meLL) impl.me(meLL[0], meLL[1]);
   }
 
   function useKakao() {
@@ -113,6 +120,11 @@
             });
           },
           focus: function (p) { map.setLevel(4); map.setCenter(new km.LatLng(p[0], p[1])); },
+          me: function (lat, lng) {
+            var pos = new km.LatLng(lat, lng);
+            if (meOv) meOv.setPosition(pos);
+            else { meOv = new km.CustomOverlay({position: pos, content: '<div class="me"></div>', yAnchor: 0.5, zIndex: 0}); meOv.setMap(map); }
+          },
           fit: function () {
             if (lastPts.length == 1) { map.setLevel(4); map.setCenter(new km.LatLng(lastPts[0][0], lastPts[0][1])); }
             else if (lastPts.length == 2) {
@@ -123,6 +135,7 @@
           }
         };
         if (queued) { var q = queued; queued = null; setPoints.apply(null, q); }
+        if (meLL) impl.me(meLL[0], meLL[1]);
       });
     };
     document.head.appendChild(sc);
@@ -141,6 +154,19 @@
     else msg.style.display = 'none';
     lastPts = pts;
     impl.fit();
+  }
+
+  // 실시간 내 위치: setMe(위도, 경도)
+  var meOv = null, meLL = null;
+  function setMe(lat, lng) {
+    meLL = [lat, lng];
+    if (!impl || !impl.me) return;
+    impl.me(lat, lng);
+  }
+  // 출발지까지 시간 다시 계산되면: updateInfo('o', '도보 300m(약5분)')
+  function updateInfo(which, text) {
+    for (var i = 0; i < lastPts.length; i++) if (lastPts[i][5] == which) lastPts[i][6] = text;
+    if (impl) impl.set(lastPts);
   }
 
   // 안드로이드 ⊙ 버튼: focusPoint('o') 출발 / focusPoint('d') 도착 — 그 위치로 크게 확대하고 주소 말풍선

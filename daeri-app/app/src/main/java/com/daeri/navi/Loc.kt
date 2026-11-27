@@ -48,4 +48,22 @@ object Loc {
             }
         }.onFailure { if (!done) { done = true; cb(last?.let(::pt)) } }
     }
+
+    /**
+     * 실시간 위치: 화면을 보는 동안 GPS·네트워크 위치가 바뀔 때마다 cb (메인 스레드).
+     * 돌려준 함수를 부르면 멈춘다. 권한이 없으면 아무것도 안 함.
+     */
+    @SuppressLint("MissingPermission")
+    fun watch(ctx: Context, cb: (Geo.Pt) -> Unit): () -> Unit {
+        if (!hasPerm(ctx)) return {}
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val l = android.location.LocationListener { loc -> cb(pt(loc)) }
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+        // 먼저 최근 위치로 바로 한 번
+        providers.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time }
+            ?.takeIf { System.currentTimeMillis() - it.time < 10 * 60_000L }?.let { cb(pt(it)) }
+        for (pr in providers) runCatching { lm.requestLocationUpdates(pr, 5000L, 10f, l, Looper.getMainLooper()) }
+        return { runCatching { lm.removeUpdates(l) } }
+    }
 }

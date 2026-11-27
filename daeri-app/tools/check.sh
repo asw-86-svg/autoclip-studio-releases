@@ -7,7 +7,7 @@ OUT=app/build/check; rm -rf "$OUT" app/build/screens; mkdir -p "$OUT"
 fail=0; ok(){ echo "  ✅ $1"; }; bad(){ echo "  ❌ $1"; fail=1; }
 
 echo "1) 단위 검사 + 화면 그리기 + 앱 빌드"
-if SCREENSHOTS=1 gradle --no-daemon -q testDebugUnitTest assembleRelease > "$OUT/gradle.log" 2>&1; then ok "빌드 성공"; else bad "빌드/검사 실패 (app/build/check/gradle.log)"; grep -E "^e: |FAILED|Test.*>" "$OUT/gradle.log" | head -20; fi
+if SCREENSHOTS=1 gradle --no-daemon -q cleanTestDebugUnitTest testDebugUnitTest assembleRelease > "$OUT/gradle.log" 2>&1; then ok "빌드 성공"; else bad "빌드/검사 실패 (app/build/check/gradle.log)"; grep -E "^e: |FAILED|Test.*>" "$OUT/gradle.log" | head -20; fi
 python3 - <<'PY' || fail=1
 import glob,re,sys
 t=f=s=0; names=[]
@@ -32,6 +32,7 @@ sheet=Image.new('RGB',(cols*(w+10),rows*(H+10)),(60,60,60))
 for k,i in enumerate(th): sheet.paste(i,((k%cols)*(w+10),(k//cols)*(H+10)))
 sheet.save('app/build/check/screens.png'); print("  ✅ 화면",len(fs),"장 → app/build/check/screens.png")
 PY
+[ "$(ls app/build/screens/*.png 2>/dev/null | wc -l)" -ge 10 ] || bad "화면 그림이 안 만들어짐 (검사가 실제로 안 돌았음)"
 
 echo "3) 콜 상세 지도 (키 없음 / 잘못된 키 / 내장 카카오 키)"
 JS=$(python3 - <<'PY'
@@ -42,9 +43,11 @@ a=[int(x) for x in re.search(r'val js: String get\(\) = d\(intArrayOf\(([^)]*)\)
 print(''.join(chr(v^M[i%len(M)]) for i,v in enumerate(a)))
 PY
 )
-r=$(node tools/map_check.js "" "$OUT/map_osm.png" 2>&1 | head -1); echo "$r" | grep -q '"pins":2' && ok "기본 지도 핀 2개" || bad "기본 지도: $r"
-r=$(node tools/map_check.js "BADKEY" "$OUT/map_bad.png" 2>&1 | head -1); echo "$r" | grep -q '"leaflet":true' && echo "$r" | grep -q '"pins":2' && ok "잘못된 키 → 기본 지도로 바뀜" || bad "잘못된 키: $r"
-r=$(node tools/map_check.js "$JS" "$OUT/map_kakao.png" 2>&1 | head -1); echo "$r" | grep -q '"kakao":true' && echo "$r" | grep -q '"pins":2' && ok "카카오 지도 + 핀 2개" || bad "카카오 지도: $r (인터넷 막힘이면 휴대폰에서 확인)"
+all=$(node tools/map_check.js "" "$OUT/map_osm.png" 2>&1); r=$(echo "$all" | grep '^{' | head -1); echo "$r" | grep -q '"pins":2' && ok "기본 지도 핀 2개" || bad "기본 지도: $r"
+echo "$all" | grep -q 'me-dot: 1' && ok "내 위치 점" || bad "내 위치 점 안 보임"
+echo "$all" | grep -q 'focus-callout: 1' && ok "⌖ 확대 + 주소 말풍선" || bad "⌖ 확대 말풍선 안 보임"
+r=$(node tools/map_check.js "BADKEY" "$OUT/map_bad.png" 2>&1 | grep '^{' | head -1); echo "$r" | grep -q '"leaflet":true' && echo "$r" | grep -q '"pins":2' && ok "잘못된 키 → 기본 지도로 바뀜" || bad "잘못된 키: $r"
+r=$(node tools/map_check.js "$JS" "$OUT/map_kakao.png" 2>&1 | grep '^{' | head -1); echo "$r" | grep -q '"kakao":true' && echo "$r" | grep -q '"pins":2' && ok "카카오 지도 + 핀 2개" || bad "카카오 지도: $r (인터넷 막힘이면 휴대폰에서 확인)"
 
 echo "4) 카카오 주소 찾기 (내장 REST 키)"
 REST=$(python3 - <<'PY'

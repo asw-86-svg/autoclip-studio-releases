@@ -43,7 +43,7 @@ class ScreenshotTest {
 
     private fun shot(name: String, open: String, h: Int = 2340, extra: (Intent) -> Unit = {}) {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
-        if (name != "call_kakao") seed()
+        if (name != "call_kakao" && name != "call_long") seed()
         val intent = Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java).putExtra("open", open)
         extra(intent)
         val act = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
@@ -96,6 +96,15 @@ class ScreenshotTest {
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
             listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
         shot("call_kakao", "call", 2700)
+    }
+
+    /** 긴 주소는 잘리지 않고 두 줄로 */
+    @Test fun callLong() {
+        assumeTrue(System.getenv("SCREENSHOTS") == "1")
+        val ctx = RuntimeEnvironment.getApplication()
+        Store.setCurrent(ctx, CallInfo("카카오T 대리", "송파구 문정동 르피에드문정오피스텔", "경기 화성시 효행구 봉담읍 화성봉담2그랑드비체아파트",
+            listOf("송파구 문정동 르피에드문정오피스텔"), listOf("경기 화성시 효행구 봉담읍 화성봉담2그랑드비체아파트"), "24,000", pkg = "com.kakao.driver"))
+        shot("call_long", "call", 2700)
     }
     @Test fun homeAd() {
         Ads.setJson(RuntimeEnvironment.getApplication(), """{"ads":[{"id":"t1","title":"○○ 대리기사 보험","text":"하루 3,000원부터 · 24시간 상담","link":"tel:01000000000","button":"📞 전화"}]}""")
