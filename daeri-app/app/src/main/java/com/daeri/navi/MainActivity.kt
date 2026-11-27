@@ -27,6 +27,7 @@ import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.bubbleVibrate
 import com.daeri.navi.Store.commissionRate
+import com.daeri.navi.Store.dayStartHour
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoBubble
@@ -62,14 +63,19 @@ class MainActivity : Activity() {
     private var lastScreen: Screen? = null
     private var logMonth: Calendar = Calendar.getInstance()
     private var logListMode = false
-    private var day: Calendar = Calendar.getInstance()
+    private var day: Calendar = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -6) }
     private var showDump = false
     private var callsShown = 50
     private var dayBack = Screen.LOG
     private var askedLocation = false
 
     private val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
-    private fun dayKey(t: Long) = dayKeyFmt.format(Date(t))
+    /** 운행 기준 날짜: 새벽 (기본 6시) 전까지는 전날로 친다 */
+    private fun dayKey(t: Long) = dayKeyFmt.format(Date(t - dayStartHour * 3600_000L))
+    /** 달력 칸처럼 그냥 그 날짜 */
+    private fun dateKey(t: Long) = dayKeyFmt.format(Date(t))
+    /** 운행 기준 '오늘' 날짜의 Calendar */
+    private fun bizToday() = Calendar.getInstance().apply { timeInMillis = System.currentTimeMillis() - dayStartHour * 3600_000L }
     private fun won(n: Int) = String.format(Locale.KOREA, "%,d", n)
 
     /** 앱 전체 글자를 10% 작게 */
@@ -140,7 +146,7 @@ class MainActivity : Activity() {
             "log" -> screen = Screen.LOG
             "settings" -> screen = Screen.SETTINGS
             "trash" -> screen = Screen.TRASH
-            "day" -> { day = Calendar.getInstance(); dayBack = Screen.HOME; screen = Screen.DAY }
+            "day" -> { day = bizToday(); dayBack = Screen.HOME; screen = Screen.DAY }
             "edit" -> {
                 val id = i.getLongExtra("trip", -1L)
                 editing = Store.trips(this).firstOrNull { it.id == id }
@@ -275,7 +281,7 @@ class MainActivity : Activity() {
             val pending = Store.trips(this@MainActivity).count { !it.confirmed }
             addView(menuItem("🚗", "자동운행기록", if (pending > 0) "$pending" else null) { go(Screen.AUTO) })
             addView(divider())
-            addView(menuItem("📅", "운행일지", null) { logMonth = Calendar.getInstance(); go(Screen.LOG) })
+            addView(menuItem("📅", "운행일지", null) { logMonth = bizToday(); go(Screen.LOG) })
             addView(divider())
             addView(menuItem("✍️", "직접 입력 (문자·카톡 콜)", null) { go(Screen.PASTE) })
             addView(divider())
@@ -572,7 +578,7 @@ class MainActivity : Activity() {
         setTop("운행일지", true)
         dayBack = Screen.LOG
         val ym = ymFmt.format(logMonth.time)
-        val monthTrips = Store.trips(this).filter { it.confirmed && ymFmt.format(Date(it.time)) == ym }
+        val monthTrips = Store.trips(this).filter { it.confirmed && ymFmt.format(Date(it.time - dayStartHour * 3600_000L)) == ym }
 
         // 월 이동 + 달력/목록
         root.addView(LinearLayout(this).apply {
@@ -636,7 +642,7 @@ class MainActivity : Activity() {
             if (d in 1..days) {
                 val c2 = logMonth.clone() as Calendar
                 c2.set(Calendar.DAY_OF_MONTH, d)
-                val key = dayKey(c2.timeInMillis)
+                val key = dateKey(c2.timeInMillis)
                 val dow = i % 7
                 cell.addView(TextView(this).apply {
                     text = "$d"; textSize = 15f; gravity = Gravity.CENTER
@@ -662,10 +668,10 @@ class MainActivity : Activity() {
         val dFmt = SimpleDateFormat("d(E)", Locale.KOREA)
         byDay.toSortedMap().forEach { (_, list) ->
             val t0 = list.first().time
-            val dow = Calendar.getInstance().apply { timeInMillis = t0 }.get(Calendar.DAY_OF_WEEK)
+            val dow = Calendar.getInstance().apply { timeInMillis = t0 - dayStartHour * 3600_000L }.get(Calendar.DAY_OF_WEEK)
             root.addView(card().apply {
-                setOnClickListener { day = Calendar.getInstance().apply { timeInMillis = t0 }; go(Screen.DAY) }
-                addView(summaryBlock(dFmt.format(Date(t0)), list, titleColor = if (dow == 1) red else if (dow == 7) blue else white))
+                setOnClickListener { day = Calendar.getInstance().apply { timeInMillis = t0 - dayStartHour * 3600_000L }; go(Screen.DAY) }
+                addView(summaryBlock(dFmt.format(Date(t0 - dayStartHour * 3600_000L)), list, titleColor = if (dow == 1) red else if (dow == 7) blue else white))
             })
         }
     }
@@ -751,7 +757,7 @@ class MainActivity : Activity() {
     private fun renderDay() {
         val title = SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
         setTop(title, true, "+ 입력") { openEditor(null) }
-        val key = dayKey(day.timeInMillis)
+        val key = dateKey(day.timeInMillis)
         val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == key }.sortedBy { it.time }
         if (list.isEmpty()) {
             root.addView(card().apply { addView(text("이 날은 기록이 없어요.", 15f, grey)) })
@@ -824,7 +830,7 @@ class MainActivity : Activity() {
         val cal = Calendar.getInstance().apply {
             timeInMillis = t?.time ?: run {
                 val now = Calendar.getInstance()
-                if (dayKey(now.timeInMillis) == dayKey(day.timeInMillis)) now.timeInMillis
+                if (dayKey(now.timeInMillis) == dateKey(day.timeInMillis)) now.timeInMillis
                 else (day.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0) }.timeInMillis
             }
         }
@@ -1090,6 +1096,16 @@ class MainActivity : Activity() {
                 toast(if (kakaoBubble) "카카오 콜도 말풍선을 바꿔요" else "카카오 콜은 말풍선을 안 바꿔요 (목록·일지 기록은 계속)")
                 render()
             })
+        })
+
+        root.addView(card().apply {
+            addView(text("하루가 바뀌는 시각", 16f, white, bold = true))
+            addView(text("이 시각 전까지는 전날 운행으로 계산해요 (목표·오늘 합계·운행일지)", 12f, grey))
+            addView(row(listOf(0, 4, 5, 6, 7).map { h ->
+                button(if (h == 0) "자정" else "${h}시", if (dayStartHour == h) blue else innerBg) {
+                    dayStartHour = h; toast(if (h == 0) "자정에 하루가 바뀌어요" else "새벽 ${h}시에 하루가 바뀌어요"); render()
+                }
+            }))
         })
 
         root.addView(card().apply {

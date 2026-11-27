@@ -327,6 +327,11 @@ object Store {
         get() = p(this).getBoolean("bubbleVibrate", true)
         set(v) = p(this).edit().putBoolean("bubbleVibrate", v).apply()
 
+    /** 하루가 바뀌는 시각(시). 대리운전은 밤을 넘기므로 기본 새벽 6시 — 그 전까지는 전날 운행으로 계산 */
+    var Context.dayStartHour: Int
+        get() = p(this).getInt("dayStartHour", 6)
+        set(v) = p(this).edit().putInt("dayStartHour", v).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
