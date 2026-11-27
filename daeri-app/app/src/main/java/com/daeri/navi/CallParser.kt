@@ -22,6 +22,8 @@ data class CallInfo(
     val pkg: String = "",
     /** "N초 후 자동취소"(로지), "N초 자동배차 중"(I-Driver) — 취소·거부하지 않으면 배차되는 화면 */
     val autoDispatch: Boolean = false,
+    /** 카카오 '추천가' 콜 */
+    val recommended: Boolean = false,
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -87,6 +89,11 @@ object CallParser {
     fun parse(texts: List<String>, source: String = "", allowFreeText: Boolean = true): CallInfo? {
         val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
+        val rec = lines.any { "추천가" in norm(it) }
+        return parseAll(lines, source, allowFreeText)?.let { if (rec) it.copy(recommended = true) else it }
+    }
+
+    private fun parseAll(lines: List<String>, source: String, allowFreeText: Boolean): CallInfo? {
         return parseLabeled(lines, source)
             ?: parseKakao(lines, source)
             ?: parseKakaoCard(lines, source)
@@ -208,7 +215,7 @@ object CallParser {
     // 주소가 아닌 줄(결제·정산·메뉴 글자)에 자주 나오는 말
     private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과",
         // 카카오T 대리 화면 메뉴 글자
-        "콜대기", "콜수요", "리스트설정", "콜리스트", "정렬옵션", "새로고침", "콜찾기", "귀가지원", "단독배정", "선호도착", "나의예약", "이벤트", "메뉴")
+        "콜대기", "콜수요", "리스트설정", "추천가", "제휴", "콜리스트", "정렬옵션", "새로고침", "콜찾기", "귀가지원", "단독배정", "선호도착", "나의예약", "이벤트", "메뉴")
     /** 대리 앱 메뉴·결제 글자인지 (주소가 아님) */
     fun isMenuText(t: String): Boolean = NOT_ADDR.any { it in norm(t) }
 
@@ -251,8 +258,10 @@ object CallParser {
     private val DRIVE_MIN = Regex("""^약\s*\d+\s*분\s*운행$""")
 
     private fun parseKakaoCard(lines: List<String>, source: String): CallInfo? {
-        val k = lines.indexOfFirst { DRIVE_MIN.matches(it.trim()) }
-        if (k < 1 || lines.none { "실제수익" in norm(it) }) return null
+        if (lines.none { "실제수익" in norm(it) }) return null
+        val endWords = listOf("추천가", "콜받도착", "제휴", "카드|", "현금|", "실제수익")
+        val k = lines.indexOfFirst { l -> DRIVE_MIN.matches(l.trim()) || endWords.any { it in norm(l) } }
+        if (k < 1) return null
         val body = ArrayList<String>()
         var i = k - 1
         while (i >= 0 && body.size < 5) {

@@ -275,6 +275,16 @@ class CallParserTest {
         assertTrue(!c.accepted)
     }
 
+    @Test fun 카카오_단독배정_추천가() {
+        val c = CallParser.parse(listOf("넘기기", "단독배정 확인", "프로 단독배정", "도보 1.9km / 약 31분", "서천동", "남촌홍어",
+            "♥", "경기 수원 팔달구 인계동", "수원센트럴아이파크자이아파트 GATE1", "추천가", "콜받도착", "카드 | 확정", "실제수익", "22,400"),
+            "카카오T 대리", allowFreeText = false)!!
+        assertEquals("서천동 남촌홍어", c.originRaw)
+        assertTrue(c.destRaw, c.destRaw.startsWith("경기 수원 팔달구 인계동"))
+        assertEquals(22400, CallParser.won(c.fare))
+        assertTrue(c.recommended)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -80,8 +80,10 @@ object Store {
 
     fun trips(ctx: Context): List<Trip> = runCatching {
         val arr = JSONArray(p(ctx).getString("trips", "[]"))
-        (0 until arr.length()).map { i ->
-            arr.getJSONObject(i).let { o ->
+        (0 until arr.length()).map { i -> tripFromJson(arr.getJSONObject(i)) }
+    }.getOrDefault(emptyList())
+
+    private fun tripFromJson(o: JSONObject): Trip =
                 if (o.has("fare")) Trip(
                     o.getLong("id"), o.getLong("time"),
                     o.optString("origin"), o.optString("via"), o.optString("dest"), o.optString("program"),
@@ -97,33 +99,71 @@ object Store {
                         program = o.optString("memo"), fare = o.optInt("in"), commission = o.optInt("out"), callKey = o.optString("key"),
                     )
                 }
-            }
-        }
-    }.getOrDefault(emptyList())
+
+    private fun tripToJson(t: Trip) = JSONObject().apply {
+        put("id", t.id); put("time", t.time)
+        put("origin", t.origin); put("via", t.via); put("dest", t.dest); put("program", t.program)
+        put("fare", t.fare); put("viaFee", t.viaFee); put("tip", t.tip)
+        put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
+        put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
+    }
 
     private fun saveTrips(ctx: Context, list: List<Trip>) {
         val arr = JSONArray()
-        list.sortedBy { it.time }.forEach { t ->
-            arr.put(JSONObject().apply {
-                put("id", t.id); put("time", t.time)
-                put("origin", t.origin); put("via", t.via); put("dest", t.dest); put("program", t.program)
-                put("fare", t.fare); put("viaFee", t.viaFee); put("tip", t.tip)
-                put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
-                put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
-            })
-        }
+        list.sortedBy { it.time }.forEach { arr.put(tripToJson(it)) }
         p(ctx).edit().putString("trips", arr.toString()).apply()
     }
 
+    // ---------------- 삭제된 기록 (되살리기 가능) ----------------
+    data class Trashed(val trip: Trip, val deletedAt: Long, val reason: String)
+
+    fun trash(ctx: Context): List<Trashed> = runCatching {
+        val arr = JSONArray(p(ctx).getString("tripTrash", "[]"))
+        (0 until arr.length()).map { i ->
+            arr.getJSONObject(i).let { o -> Trashed(tripFromJson(o.getJSONObject("trip")), o.optLong("at"), o.optString("why")) }
+        }
+    }.getOrDefault(emptyList())
+
+    private fun saveTrash(ctx: Context, list: List<Trashed>) {
+        val monthAgo = System.currentTimeMillis() - 30L * 24 * 3600_000L
+        val arr = JSONArray()
+        list.filter { it.deletedAt > monthAgo }.sortedByDescending { it.deletedAt }.take(300).forEach { x ->
+            arr.put(JSONObject().put("trip", tripToJson(x.trip)).put("at", x.deletedAt).put("why", x.reason))
+        }
+        p(ctx).edit().putString("tripTrash", arr.toString()).apply()
+    }
+
+    /** 기록을 지우지 않고 '삭제된 기록'으로 옮긴다 (30일 보관) */
+    private fun moveToTrash(ctx: Context, gone: List<Trip>, reason: String) {
+        if (gone.isEmpty()) return
+        val now = System.currentTimeMillis()
+        saveTrash(ctx, gone.map { Trashed(it, now, reason) } + trash(ctx))
+    }
+
+    fun restoreTrip(ctx: Context, id: Long) {
+        val all = trash(ctx)
+        val x = all.firstOrNull { it.trip.id == id } ?: return
+        saveTrips(ctx, trips(ctx).filter { it.id != id } + x.trip)
+        saveTrash(ctx, all.filter { it.trip.id != id })
+    }
+
+    fun purgeTrash(ctx: Context, id: Long) = saveTrash(ctx, trash(ctx).filter { it.trip.id != id })
+
     /** 배차취소·거부된 콜: 자동운행기록에서 빼고, 받은 콜 목록에선 '수락 전'으로 되돌린다 */
     fun unrecordCall(ctx: Context, key: String) {
-        saveTrips(ctx, trips(ctx).filterNot { it.callKey == key && System.currentTimeMillis() - it.time < 3600_000L })
+        val (gone, keep) = trips(ctx).partition { it.callKey == key && System.currentTimeMillis() - it.time < 3600_000L }
+        moveToTrash(ctx, gone, "배차취소·거부 감지")
+        saveTrips(ctx, keep)
         writeHistory(ctx, history(ctx).map { if (it.key == key) it.copy(accepted = false) else it })
         current(ctx)?.let { if (it.key == key) p(ctx).edit().putString("current", toJson(it.copy(accepted = false)).toString()).apply() }
     }
 
     fun upsertTrip(ctx: Context, t: Trip) = saveTrips(ctx, trips(ctx).filter { it.id != t.id } + t)
-    fun deleteTrip(ctx: Context, id: Long) = saveTrips(ctx, trips(ctx).filter { it.id != id })
+    fun deleteTrip(ctx: Context, id: Long) {
+        val (gone, keep) = trips(ctx).partition { it.id == id }
+        moveToTrash(ctx, gone, "직접 삭제")
+        saveTrips(ctx, keep)
+    }
 
     /** 수락된 콜(상세배차정보·배정완료)을 읽으면 운행일지에 자동 기록. 같은 콜은 12시간 안에 한 번만. */
     private fun recordAccepted(ctx: Context, c: CallInfo) {
@@ -153,13 +193,7 @@ object Store {
         val hist = history(ctx)
         val keepHist = hist.filterNot { bad(it.source) || CallParser.isMenuText(it.originRaw) || CallParser.isMenuText(it.destRaw) }
         if (keepHist.size != hist.size) writeHistory(ctx, keepHist)
-        val tr = trips(ctx)
-        val keepTrips = tr.filterNot {
-            it.callKey.isNotEmpty() && (bad(it.program.ifEmpty { it.memo }) ||
-                // 카카오 메뉴 글자를 콜로 잘못 읽은 기록 ("콜 대기 콜 수요 지도 → 리스트 설정")
-                CallParser.isMenuText(it.origin) || CallParser.isMenuText(it.dest))
-        }
-        if (keepTrips.size != tr.size) saveTrips(ctx, keepTrips)
+        // 운행일지·자동운행기록은 자동 청소에서 절대 지우지 않는다 (받은 콜 목록만 청소)
         current(ctx)?.let { if (bad(it.source)) p(ctx).edit().remove("current").apply() }
         val dumps = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())
         val keepDumps = JSONArray()
@@ -243,7 +277,7 @@ object Store {
         put("source", c.source); put("originRaw", c.originRaw); put("destRaw", c.destRaw)
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
-        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch)
+        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -255,7 +289,7 @@ object Store {
         destQueries = o.optJSONArray("dq")?.strings().orEmpty(),
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
         accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
-        autoDispatch = o.optBoolean("auto"),
+        autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),

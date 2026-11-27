@@ -33,7 +33,9 @@ class ScreenshotTest {
             program = "카카오대리", fare = 16800, commission = 3360, callKey = "k1",
         ))
         Store.setCurrent(ctx, CallInfo("로지", "탁송)매송고색로882", "강원 춘천시 석사동)춘천시 스무숲3길 6/톨포",
-            listOf("경기 수원시 권선구 매송고색로 882"), listOf("춘천시 스무숲3길 6"), "55000원", pkg = "com.logi.test"))
+            listOf("경기 수원시 권선구 매송고색로 882"), listOf("춘천시 스무숲3길 6"), "55000원", pkg = "com.logi.test", recommended = true))
+        Store.upsertTrip(ctx, Store.Trip(id = 2L, time = now - 3600_000L, origin = "서천동 남촌홍어", dest = "인계동 수원센트럴아이파크자이", program = "카카오대리", fare = 22400, commission = 4480, callKey = "k2"))
+        Store.deleteTrip(ctx, 2L)
     }
 
     private fun shot(name: String, open: String, h: Int = 2340, extra: (Intent) -> Unit = {}) {
@@ -56,5 +58,7 @@ class ScreenshotTest {
     @Test fun day() = shot("day", "day")
     @Test fun home() = shot("home", "home")
     @Test fun call() = shot("call", "call")
+    @Test fun calls() = shot("calls", "calls")
+    @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 3000)
 }

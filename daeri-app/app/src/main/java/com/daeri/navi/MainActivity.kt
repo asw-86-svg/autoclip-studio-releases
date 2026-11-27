@@ -37,7 +37,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private enum class Screen { HOME, CALL, CALLS, LOG, DAY, EDIT, PASTE, SETTINGS }
+    private enum class Screen { HOME, CALL, CALLS, LOG, DAY, EDIT, TRASH, PASTE, SETTINGS }
 
     // ---------- 색 ----------
     private val black = 0xFF000000.toInt()
@@ -124,6 +124,7 @@ class MainActivity : Activity() {
             Screen.HOME -> super.onBackPressed()
             Screen.DAY -> go(dayBack)
             Screen.EDIT -> go(editBack)
+            Screen.TRASH -> go(Screen.DAY)
             else -> go(Screen.HOME)
         }
     }
@@ -136,6 +137,7 @@ class MainActivity : Activity() {
             "calls" -> screen = Screen.CALLS
             "log" -> screen = Screen.LOG
             "settings" -> screen = Screen.SETTINGS
+            "trash" -> screen = Screen.TRASH
             "day" -> { day = Calendar.getInstance(); dayBack = Screen.HOME; screen = Screen.DAY }
             "edit" -> {
                 val id = i.getLongExtra("trip", -1L)
@@ -170,6 +172,7 @@ class MainActivity : Activity() {
             Screen.LOG -> renderLog()
             Screen.DAY -> renderDay()
             Screen.EDIT -> renderEditor()
+            Screen.TRASH -> renderTrash()
             Screen.PASTE -> renderPaste()
             Screen.SETTINGS -> renderSettings()
         }
@@ -253,6 +256,7 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     addView(text("지금 콜 · ${c.source}", 13f, grey), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    if (c.recommended) addView(recBadge())
                     if (fareWon > 0) addView(text("${won(fareWon)}원", 17f, blue, bold = true))
                     addView(text("  ›", 22f, grey))
                 })
@@ -357,7 +361,11 @@ class MainActivity : Activity() {
                 if (c.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL; gravity = Gravity.END
                     addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
-                    addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 27f, blue, bold = true).apply { maxLines = 1 })
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                        if (c.recommended) addView(recBadge())
+                        addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 27f, blue, bold = true).apply { maxLines = 1 })
+                    })
                 })
             })
 
@@ -487,7 +495,11 @@ class MainActivity : Activity() {
                     if (h.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.END
                         addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
-                        addView(text(CallParser.won(h.fare).takeIf { it > 0 }?.let { won(it) } ?: h.fare, 22f, blue, bold = true).apply { maxLines = 1 })
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                            if (h.recommended) addView(recBadge())
+                            addView(text(CallParser.won(h.fare).takeIf { it > 0 }?.let { won(it) } ?: h.fare, 22f, blue, bold = true).apply { maxLines = 1 })
+                        })
                     })
                 })
                 addView(space(10))
@@ -518,6 +530,13 @@ class MainActivity : Activity() {
     }
 
     private val iconCache = HashMap<String, android.graphics.drawable.Drawable?>()
+
+    /** 금액 옆 빨간 '추천가' 표시 */
+    private fun recBadge() = TextView(this).apply {
+        text = "추천가"; textSize = 11f; setTextColor(white); setTypeface(typeface, Typeface.BOLD)
+        setPadding(dp(6), dp(2), dp(6), dp(2)); background = rounded(red, 6)
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(6) }
+    }
 
     /** 설치된 대리 앱의 진짜 아이콘 (없으면 글자 아이콘) */
     private fun appIcon(h: CallInfo): View {
@@ -677,9 +696,36 @@ class MainActivity : Activity() {
             })
         }
         root.addView(button("+ 새일지 등록", blue) { openEditor(null) })
+        val trashed = Store.trash(this).size
+        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { go(Screen.TRASH) })
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
         footer.addView(summaryBlock("일일 합계", list))
+    }
+
+    // ---------------- 삭제된 기록 (30일 보관, 되살리기) ----------------
+    private fun renderTrash() {
+        setTop("삭제된 기록", true)
+        val list = Store.trash(this)
+        root.addView(text("지운 기록은 30일 동안 여기 남아 있어요. [되살리기]를 누르면 원래 날짜로 돌아가요.", 13f, grey).apply { setPadding(dp(6), 0, dp(6), dp(8)) })
+        if (list.isEmpty()) { root.addView(card().apply { addView(text("삭제된 기록이 없어요.", 15f, grey)) }); return }
+        val f = SimpleDateFormat("MM-dd HH:mm", Locale.KOREA)
+        list.forEach { x ->
+            val t = x.trip
+            root.addView(card().apply {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    addView(text(f.format(Date(t.time)) + "  " + t.program, 14f, grey), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(text("순익 ${won(t.net)}", 15f, white, bold = true))
+                })
+                if (t.title.isNotEmpty()) addView(text(t.title, 14f, white).apply { maxLines = 2 })
+                addView(text("${f.format(Date(x.deletedAt))} 삭제 · ${x.reason}", 12f, 0xFFE5A0A0.toInt()))
+                addView(row(listOf(
+                    button("되살리기", blue) { Store.restoreTrip(this@MainActivity, t.id); toast("되살렸어요"); render() },
+                    button("완전 삭제", 0xFF4A2A2C.toInt()) { confirm("완전히 지울까요? 되살릴 수 없어요.") { Store.purgeTrash(this@MainActivity, t.id); render() } },
+                )))
+            })
+        }
     }
 
     // ---------------- 새일지 등록 / 일지 수정 ----------------
