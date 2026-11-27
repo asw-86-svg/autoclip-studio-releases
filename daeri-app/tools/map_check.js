@@ -13,7 +13,7 @@ const OUT = process.argv[3] || 'map.png';
     const f = path.join(A, new URL(r.request().url()).pathname.replace('/assets/', ''));
     r.fulfill({ body: fs.readFileSync(f), contentType: f.endsWith('.js') ? 'application/javascript' : f.endsWith('.css') ? 'text/css' : 'text/html' });
   });
-  await p.goto('https://appassets.androidplatform.net/assets/map.html' + (KEY ? '?kakao=' + KEY : ''));
+  await p.goto('https://appassets.androidplatform.net/assets/map.html?dark=' + (process.env.DARK || '1') + (KEY ? '&kakao=' + KEY : ''));
   await p.evaluate(() => setPoints(37.25071, 127.07859, 37.20566, 127.11239, '', '수원시 영통구 영통동 1012-4', '화성시 동탄구 영천동 701-12'));
   await p.waitForTimeout(8000);
   const r = await p.evaluate(() => ({ kakao: !!(window.kakao && kakao.maps && kakao.maps.Map), leaflet: !!document.querySelector('.leaflet-container'), pins: document.querySelectorAll('.drop').length, attr: (document.querySelector('.leaflet-control-attribution')||{}).textContent }));

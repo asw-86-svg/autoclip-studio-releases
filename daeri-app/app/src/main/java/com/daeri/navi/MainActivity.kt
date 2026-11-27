@@ -594,7 +594,9 @@ class MainActivity : Activity() {
             }
         }
         // 카카오 JavaScript 키가 있으면 카카오 지도 (도메인 https://appassets.androidplatform.net 등록 필요)
-        web.loadUrl("https://$host/assets/map.html" + kakaoJsKey.takeIf { it.isNotBlank() }?.let { "?kakao=" + Uri.encode(it) }.orEmpty())
+        // 휴대폰이 다크 모드면 어두운 지도, 아니면 밝은 지도
+        val dark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        web.loadUrl("https://$host/assets/map.html?dark=" + (if (dark) "1" else "0") + kakaoJsKey.takeIf { it.isNotBlank() }?.let { "&kakao=" + Uri.encode(it) }.orEmpty())
         Thread {
             val o = Geo.resolve(this, c.originQueries)
             val d = Geo.resolve(this, c.destQueries)

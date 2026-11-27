@@ -20,7 +20,7 @@
   .zoom{position:absolute;right:10px;top:10px;z-index:1000;display:none;flex-direction:column;border:1px solid #555;border-radius:10px;overflow:hidden}
   .zoom a{width:48px;height:48px;line-height:46px;text-align:center;font-size:28px;background:#2A2A2E;color:#fff;border-bottom:1px solid #444;user-select:none}
   /* 어두운 지도: 지도 그림만 반전 (핀·말풍선은 그대로) */
-  #map img, .leaflet-tile{filter:invert(.92) hue-rotate(180deg) saturate(.55) brightness(.92) contrast(.95)}
+  .dark #map img, .dark .leaflet-tile{filter:invert(.92) hue-rotate(180deg) saturate(.55) brightness(.92) contrast(.95)}
   /* 물방울 핀 + 주소 말풍선 */
   .drop{position:relative;width:40px;height:50px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
   .drop span{position:absolute;left:0;right:0;top:9px;text-align:center;color:#fff;font:700 12px sans-serif}
@@ -45,6 +45,8 @@
            '<div class="drop">' + svg + '<span>' + p[3] + '</span></div></div>';
   }
   var focusIdx = -1;   // 확대해서 보고 있는 핀 (말풍선 표시)
+  // ?dark=1 이면 어두운 지도 (휴대폰 다크 모드를 따라감)
+  if (/[?&]dark=1/.test(location.search)) document.documentElement.className = 'dark';
   var KEY = (location.search.match(/[?&]kakao=([^&]+)/) || [])[1] || '';
   var impl = null;      // {set(pts), fit()}
   var queued = null;    // 지도가 준비되기 전에 들어온 setPoints
