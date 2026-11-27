@@ -13,7 +13,7 @@
 - 화면을 **읽기만** 함 (콜 자동 수락 기능 없음)
 
 ## 설치
-1. [최신 버전 다운로드](../../releases/tag/daeri-navi-latest) 에서 `daeri-navi.apk` 를 휴대폰으로 받기
+1. GitHub Actions 빌드 결과(daeri-navi-apk)에서 `daeri-navi.apk` 를 휴대폰으로 받기
 2. 설치 시 "출처를 알 수 없는 앱" 허용
 3. 앱 실행 → [접근성 설정 열기] → 설치된 앱 → 대리내비 켜기
    - 회색으로 안 눌리면: 설정 → 애플리케이션 → 대리내비 → 오른쪽 위 ⋮ → **제한된 설정 허용** 후 다시
@@ -21,4 +21,4 @@
 
 ## 개발
 - `app/src/main/java/com/daeri/navi/CallParser.kt` : 화면 글자 → 출발지/도착지 분석 (단위테스트: `CallParserTest.kt`)
-- GitHub Actions(`.github/workflows/daeri-app.yml`)가 push 할 때마다 APK를 빌드해 Release 에 올림
+- GitHub Actions(`.github/workflows/daeri-app.yml`)가 push 할 때마다 APK를 빌드해 결과물(artifact)로 올림
