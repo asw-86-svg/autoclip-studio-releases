@@ -41,6 +41,7 @@ class MainActivity : Activity() {
 
     private lateinit var root: LinearLayout
     private var showDump = false
+    private var askedLocation = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +58,15 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (!Loc.hasPerm(this) && !askedLocation) {
+            askedLocation = true
+            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION), 1)
+        }
+        render()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         render()
     }
 
@@ -123,6 +133,17 @@ class MainActivity : Activity() {
         val time = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(c.capturedAt))
         root.addView(card().apply {
             addView(text("${c.source} · $time" + if (c.fare.isNotEmpty()) " · ${c.fare}" else "", 13f, grey))
+
+            // 도착시간 안내
+            val eta = text("⏱ 도착시간 계산 중…", 15f, white).apply {
+                setTextIsSelectable(false)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = GradientDrawable().apply { setColor(0xFF2A3346.toInt()); cornerRadius = dp(10).toFloat() }
+                setOnClickListener { this.text = "⏱ 다시 계산 중…"; computeEta(c, this) }
+            }
+            addView(eta)
+            computeEta(c, eta)
+            addView(space(8))
 
             // 출발지
             addView(text("🟢 출발지", 14f, naverGreen, bold = true))
@@ -247,6 +268,59 @@ class MainActivity : Activity() {
             ))
             if (showDump) addView(text(Store.dump(this@MainActivity).ifEmpty { "(아직 없음)" }, 11f, 0xFFCCCCCC.toInt()))
         })
+    }
+
+    // =================== 도착시간 ===================
+    private fun computeEta(c: CallInfo, tv: TextView) {
+        Loc.current(this) { here ->
+            Thread {
+                val o = Geo.resolve(this, c.originQueries)
+                val d = Geo.resolve(this, c.destQueries)
+                val leg1 = if (here != null && o != null) Route.drive(this, here, o) else null
+                val walk1 = if (here != null && o != null) Route.straightKm(here, o) else null
+                val leg2 = if (o != null && d != null) Route.drive(this, o, d) else null
+                runOnUiThread { if (!isFinishing) tv.text = etaText(here, o, d, leg1, walk1, leg2) }
+            }.start()
+        }
+    }
+
+    private fun dur(sec: Int): String {
+        val m = (sec + 59) / 60
+        return if (m >= 60) "${m / 60}시간 ${m % 60}분" else "${m}분"
+    }
+
+    private fun km(meters: Int) = if (meters < 1000) "${meters}m" else String.format(Locale.KOREA, "%.1fkm", meters / 1000.0)
+
+    private fun etaText(here: Geo.Pt?, o: Geo.Pt?, d: Geo.Pt?, leg1: Route.Info?, walk1Km: Double?, leg2: Route.Info?): String {
+        val now = System.currentTimeMillis()
+        val hm = SimpleDateFormat("HH:mm", Locale.KOREA)
+        val sb = StringBuilder()
+        when {
+            leg1 != null -> {
+                sb.append("📍 지금 → 출발지  ${km(leg1.meters)}\n")
+                sb.append("   🚗 차로 ${dur(leg1.sec)} (${hm.format(Date(now + leg1.sec * 1000L))} 도착)")
+                if (walk1Km != null && walk1Km <= 3.0) {
+                    val w = Route.walkSec(walk1Km)
+                    sb.append("\n   🚶 걸어서 ${dur(w)} (${hm.format(Date(now + w * 1000L))} 도착)")
+                }
+                sb.append("\n")
+            }
+            here == null -> sb.append("📍 지금 위치를 몰라 출발지까지는 계산 못 했어요 (위치 권한·GPS 확인)\n")
+            o == null -> sb.append("📍 출발지 위치를 못 찾아 출발지까지는 계산 못 했어요\n")
+        }
+        if (leg2 != null) {
+            sb.append("🚗 출발지 → 도착지  ${km(leg2.meters)} · ${dur(leg2.sec)}")
+            if (leg2.toll > 0) sb.append(" · 톨비 ${String.format(Locale.KOREA, "%,d", leg2.toll)}원")
+            sb.append("\n🏁 도착지 도착 예정  ${hm.format(Date(now + ((leg1?.sec ?: 0) + leg2.sec) * 1000L))}")
+            sb.append(if (leg1 != null) " (지금 바로 차로 출발 기준)" else " (지금 출발지에서 출발 기준)")
+        } else {
+            sb.append("🏁 ${if (o == null) "출발지" else "도착지"} 위치를 못 찾아 도착 예정 시간은 계산 못 했어요")
+        }
+        if (leg1?.estimated == true || leg2?.estimated == true) {
+            sb.append("\n※ 직선거리로 계산한 대략적인 시간이에요. 카카오 키를 넣으면 실시간 교통·톨비가 반영돼요.")
+        }
+        sb.append("\n(눌러서 다시 계산)")
+        return sb.toString()
     }
 
     // =================== 지도 동작 ===================
