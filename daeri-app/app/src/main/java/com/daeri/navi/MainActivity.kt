@@ -32,6 +32,7 @@ import com.daeri.navi.Store.dayStartHour
 import com.daeri.navi.Store.dayFixed
 import com.daeri.navi.Store.monthFixed
 import com.daeri.navi.Store.detectPaused
+import com.daeri.navi.Store.workStart
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoBubble
 import com.daeri.navi.Store.kakaoKey
@@ -67,6 +68,7 @@ class MainActivity : Activity() {
     private var logMonth: Calendar = Calendar.getInstance()
     private var logListMode = false
     private var hourOpen = false
+    private var reportPreview = false
     private var day: Calendar = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -6) }
     private var showDump = false
     private var callsShown = 50
@@ -148,6 +150,7 @@ class MainActivity : Activity() {
             "call" -> screen = Screen.CALL
             "calls" -> screen = Screen.CALLS
             "log" -> screen = Screen.LOG
+            "report" -> { screen = Screen.HOME; reportPreview = true }
             "settings" -> { screen = Screen.SETTINGS; hourOpen = i.getBooleanExtra("hourOpen", false) }
             "trash" -> screen = Screen.TRASH
             "day" -> { day = bizToday(); dayBack = Screen.HOME; screen = Screen.DAY }
@@ -177,6 +180,8 @@ class MainActivity : Activity() {
     private fun render() {
         root.removeAllViews()
         footer.removeAllViews(); footer.visibility = View.GONE
+        // 미리보기(화면 확인용): 퇴근 리포트만 그린다
+        if (reportPreview) { root.addView(dailyReport(dayKey(System.currentTimeMillis()), {}, {})); return }
         when (screen) {
             Screen.HOME -> renderHome()
             Screen.CALL -> renderCallScreen()
@@ -296,34 +301,97 @@ class MainActivity : Activity() {
 
     private fun clockIn(today: String) {
         if (!serviceEnabled()) { toast("먼저 접근성에서 대리내비를 켜주세요"); startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); return }
+        // 이미 출근 중이 아니었으면 출근 시각 기록 (같은 영업일에 다시 누르면 처음 시각 유지)
+        if (!(workStart > 0 && dayKey(workStart) == today)) workStart = System.currentTimeMillis()
         detectPaused = false
         CallReaderService.instance?.applyBubbleMode()
         askGoal(today) { toast("출근! 콜 화면을 자동으로 읽어요") }
     }
 
     private fun clockOut(today: String) {
-        val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
-        val net = list.sumOf { it.net } - dayFix(list)
-        val goal = Store.goal(this, today)
-        val msg = buildString {
-            append("오늘 ${list.size}콜\n")
-            append("수입 ${won(list.sumOf { it.income })}원 · 지출 ${won(list.sumOf { it.expense } + dayFix(list))}원\n")
-            append("순익 ${won(net)}원")
-            goal?.let { g ->
-                val d = net - g
-                append("\n\n목표 ${won(g)}원 대비 ")
-                append(if (d >= 0) "+${won(d)}원 달성! 🎉" else "${won(-d)}원 모자라요")
-            }
-            append("\n\n퇴근하면 콜 화면 자동 읽기를 멈춰요.")
-        }
-        AlertDialog.Builder(this).setTitle("퇴근할까요?").setMessage(msg)
-            .setPositiveButton("퇴근") { _, _ ->
+        val dlg = android.app.Dialog(this)
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        // 화면이 작아도(폴드 겉화면) 끝까지 보이게 스크롤
+        dlg.setContentView(android.widget.ScrollView(this).apply {
+            addView(dailyReport(today, onCancel = { dlg.dismiss() }) {
+                dlg.dismiss()
                 detectPaused = true; CallReaderService.instance?.hideBubble(); toast("수고하셨어요! 안전운행 하세요"); render()
-            }
-            .setNegativeButton("취소", null).show()
+            })
+        })
+        dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        dlg.show()
+        dlg.window?.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), WRAP_CONTENT)
     }
 
-    /** 오늘의 목표 금액 입력 */
+    /** 퇴근할 때 보여주는 일일 리포트 */
+    private fun dailyReport(today: String, onCancel: () -> Unit, onOk: () -> Unit): View {
+        val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }.sortedBy { it.time }
+        val income = list.sumOf { it.income }
+        val expense = list.sumOf { it.expense } + dayFix(list)
+        val goal = Store.goal(this, today)
+        val now = System.currentTimeMillis()
+        val start = workStart.takeIf { it > 0 && dayKey(it) == today } ?: list.firstOrNull()?.time ?: now
+        val hours = (now - start) / 3600_000.0
+        val full = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.KOREA)
+
+        fun dash() = View(this).apply {
+            background = object : android.graphics.drawable.Drawable() {
+                val p = android.graphics.Paint().apply {
+                    color = 0xFF9A9AA0.toInt(); strokeWidth = 1.5f * resources.displayMetrics.density; style = android.graphics.Paint.Style.STROKE
+                    pathEffect = android.graphics.DashPathEffect(floatArrayOf(dp(6).toFloat(), dp(4).toFloat()), 0f)
+                }
+                override fun draw(c: android.graphics.Canvas) { val y = bounds.exactCenterY(); c.drawLine(0f, y, bounds.width().toFloat(), y, p) }
+                override fun setAlpha(a: Int) {}
+                override fun setColorFilter(f: android.graphics.ColorFilter?) {}
+                @Deprecated("") override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+            }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(14)).apply { topMargin = dp(6); bottomMargin = dp(6) }
+        }
+        // "목표금액: 200,000원" — 콜론 위치를 맞추려고 왼쪽/오른쪽 두 칸으로
+        fun line(label: String, value: String, color: Int = white) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(text("$label: ", 17f, grey).apply { gravity = Gravity.END }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(text(value, 17f, color, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1.1f))
+            setPadding(0, dp(3), 0, dp(3))
+        }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(cardBg, 18, line)
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+            addView(text("📊 일일 리포트", 19f, white, bold = true))
+            addView(View(this@MainActivity).apply { setBackgroundColor(line) },
+                LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(10) })
+            addView(text(full.format(Date(start)) + " ~ " + SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(now)), 16f, white).apply { gravity = Gravity.CENTER })
+            addView(dash())
+            addView(line("목표금액", goal?.let { won(it) + "원" } ?: "없음"))
+            addView(line("매출금액", won(income) + "원", blue))
+            addView(line("지출금액", won(expense) + "원", red))
+            addView(line("수익금액", won(income - expense) + "원"))
+            goal?.let { g ->
+                val d = income - expense - g
+                addView(line("목표대비", (if (d >= 0) "+" else "-") + won(kotlin.math.abs(d)) + "원", if (d >= 0) blue else red))
+            }
+            addView(dash())
+            addView(line("경유금액", won(list.sumOf { it.viaFee }) + "원"))
+            addView(line("팁금액", won(list.sumOf { it.tip }) + "원"))
+            addView(dash())
+            if (list.isEmpty()) addView(line("운행", "0콜"))
+            list.groupBy { it.program.ifBlank { "기타" } }.toList().sortedByDescending { it.second.size }.forEach { (prog, l) ->
+                addView(line(prog, "${l.size}콜"))
+            }
+            addView(dash())
+            addView(line("총콜수", "${list.size}콜"))
+            addView(line("콜평균", if (list.isEmpty()) "0원" else won(income / list.size) + "원"))
+            addView(line("시급", if (hours < 0.1) "-" else won(((income / hours) / 100).toInt() * 100) + "원"))
+            addView(dash())
+            addView(row(listOf(
+                button("계속 운행", innerBg) { onCancel() },
+                button("퇴근", blue) { onOk() },
+            )).apply { setPadding(0, dp(6), 0, 0) })
+        }
+    }
+
     private fun askGoal(today: String, after: (() -> Unit)? = null) {
         val et = edit("예) 300000").apply {
             inputType = InputType.TYPE_CLASS_NUMBER

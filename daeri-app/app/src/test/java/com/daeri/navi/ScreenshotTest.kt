@@ -28,7 +28,7 @@ class ScreenshotTest {
     private fun seed() {
         val ctx = RuntimeEnvironment.getApplication()
         val now = System.currentTimeMillis()
-        with(Store) { ctx.monthFixed = 300000; ctx.dayFixed = 10000; ctx.dayStartHour = 6 }
+        with(Store) { ctx.monthFixed = 300000; ctx.dayFixed = 10000; ctx.dayStartHour = 0; ctx.workStart = now - 5 * 3600_000L }
         Store.upsertTrip(ctx, Store.Trip(
             id = 1L, time = now, origin = "인계동 포포인츠 바이 쉐라톤 수원", dest = "경기 수원 영통구 망포동 힐스테이트영통아파트",
             program = "카카오대리", fare = 16800, commission = 3360, callKey = "k1",
@@ -77,5 +77,16 @@ class ScreenshotTest {
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 4600)
     @Test fun log() = shot("log", "log")
+    @Test fun report() {
+        val ctx = RuntimeEnvironment.getApplication()
+        val now = System.currentTimeMillis()
+        val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date(now))
+        Store.setGoal(ctx, day, 200000)
+        Store.upsertTrip(ctx, Store.Trip(id = 11L, time = now - 120_000L, origin = "가락동 다농마트", dest = "경기 수원시 영통구 매영로 366",
+            program = "카카오대리", fare = 32000, commission = 6400, viaFee = 5000, tip = 2000, callKey = "k11"))
+        Store.upsertTrip(ctx, Store.Trip(id = 12L, time = now - 60_000L, origin = "탁송 매송고색로 882", dest = "춘천시 스무숲3길 6",
+            program = "로지", fare = 55000, commission = 11000, callKey = "k12"))
+        shot("report", "report")
+    }
     @Test fun settingsHour() = shot("settings_hour", "settings", 5600) { it.putExtra("hourOpen", true) }
 }

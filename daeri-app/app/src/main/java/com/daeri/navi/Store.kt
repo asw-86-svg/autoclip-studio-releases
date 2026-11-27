@@ -351,6 +351,11 @@ object Store {
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()
 
+    /** 출근 누른 시각 (퇴근 리포트·시급 계산용) */
+    var Context.workStart: Long
+        get() = p(this).getLong("workStart", 0L)
+        set(v) = p(this).edit().putLong("workStart", v).apply()
+
     // ---------------- 읽은 화면 기록 (문제 해결용) ----------------
     fun addDump(ctx: Context, app: String, texts: List<String>) {
         val body = texts.joinToString("\n") { "• " + it.replace("\n", " ⏎ ") }.take(3000)
