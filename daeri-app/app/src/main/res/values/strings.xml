@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">대리내비</string>
+    <string name="a11y_desc">대리·탁송 프로그램의 콜 상세 화면에서 출발지와 도착지 글자를 읽어 카카오맵·네이버지도 길안내로 바로 연결합니다. 화면을 읽기만 하며, 콜을 대신 누르거나 수락하지 않습니다. 읽은 내용은 휴대폰 밖으로 보내지 않습니다(카카오 API 키를 넣은 경우 주소 검색어만 카카오로 전송).</string>
+</resources>

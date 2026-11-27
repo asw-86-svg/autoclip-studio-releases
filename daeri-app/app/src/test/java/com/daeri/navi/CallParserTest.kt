@@ -1,0 +1,96 @@
+package com.daeri.navi
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** 실제 배차 화면 형식을 본뜬 예시 (전화번호·동호수는 가짜로 바꿈). */
+class CallParserTest {
+
+    private fun screen(vararg s: String) = s.toList()
+
+    @Test fun 상세배차정보_탁송_상세주소() {
+        val c = CallParser.parse(screen(
+            "상세배차정보", "요 금", "50000원", "서명", "입금액", "10000원", "고 객", "일반 테스트모터스",
+            "메 모", "적 요", "[테스트탁송 1600-0000 12:03]\n고객과의 거리: 500미터",
+            "전 화", "0508-0000-0001", "전화", "전화2", "전화",
+            "출발지", "탁송)13시출)수원도이치오토월드\n상세:경기 수원시 권선구 고색동 수원도이치오토월드",
+            "도착지", "충남 당진시 대덕동)당진시대덕1로 100-50 테스트아파트101동/톨포",
+            "고객ID", "1234", "오더번호", "1111111111", "차량번호",
+            "경로\n안내", "출발지\n지도",
+        ))!!
+        assertEquals("50000원", c.fare)
+        assertEquals("경기 수원시 권선구 고색동 수원도이치오토월드", c.originQueries.first())
+        assertEquals("충남 당진시 당진시대덕1로 100-50", c.destQueries[0])
+        assertTrue(c.destQueries.contains("충남 당진시 대덕1로 100-50"))
+    }
+
+    @Test fun 적요에_출발주소_도착주소() {
+        val c = CallParser.parse(screen(
+            "요 금", "50000원", "서명", "고 객", "업소 일반", "메 모",
+            "적 요", "[(B)테스트서비스 070-0000-0000\n13:36] {후불50,000/\n종료10분후자동충전}출발주소 : skv1 / B1층 A04기둥\n" +
+                "출발번호 : 010-1111-2222\n\n도착주소 : 충남 예산군 응봉면 참샘2길 28-11\n도착번호 : 010-3333-4444\n차량번호 : 00가0000",
+            "전 화", "0508-0000-0002", "전화",
+        ))!!
+        assertEquals("충남 예산군 응봉면 참샘2길 28-11", c.destQueries.first())
+        assertTrue(c.phones.any { it.first == "출발번호" && it.second == "010-1111-2222" })
+        assertTrue(c.phones.any { it.first == "도착번호" && it.second == "010-3333-4444" })
+    }
+
+    @Test fun 출발지_지번_중복제거() {
+        val c = CallParser.parse(screen(
+            "출발지", "탁송)고색동326-5>수원도이치오토>\n상세:경기 수원시 권선구 고색동 경기 수원시 권선구 고색동 326-5",
+            "도착지", "충남 아산시 둔포면)아산시 둔포면",
+        ))!!
+        assertEquals("경기 수원시 권선구 고색동 326-5", c.originQueries.first())
+        assertTrue(c.destQueries.first().contains("아산시 둔포면"))
+    }
+
+    @Test fun 도착지_도로명_붙어있음() {
+        val c = CallParser.parse(screen(
+            "출발지", "탁송)매송고색로843\n상세:경기 수원시 권선구 평동 권선구 평동 54-0(매송고색로 843)",
+            "도착지", "대전 대덕구 신탄진동)대전 대덕구 대청로43 테스트스카이1단지",
+        ))!!
+        assertEquals("대전 대덕구 대청로 43", c.destQueries.first())
+        assertEquals("경기 수원시 권선구 매송고색로 843", c.originQueries.first())
+        assertTrue(c.originQueries.any { it.contains("평동 54") })
+    }
+
+    @Test fun 카카오T대리_배정완료() {
+        val c = CallParser.parse(screen(
+            "배정 완료", "배정취소", "메뉴", "화서동", "무지개맥주 수원화서역점",
+            "경기 용인 기흥구 구갈동", "한성1차아파트 102동", "카드 | 확정", "23,200",
+            "고객과 통화", "고객과 메시지",
+        ))!!
+        assertEquals("화서동 무지개맥주 수원화서역점", c.originRaw)
+        assertEquals("경기 용인 기흥구 구갈동 한성1차아파트 102동", c.destRaw)
+        assertEquals("경기 용인 기흥구 구갈동 한성1차아파트", c.destQueries.first())
+    }
+
+    @Test fun 붙여넣기_문자() {
+        val c = CallParser.parse(listOf("출발: 서울 강남구 테헤란로 152\n도착: 경기 성남시 분당구 판교역로 166\n요금 30000"))
+        assertNotNull(c)
+        assertEquals("서울 강남구 테헤란로 152", c!!.originQueries.first())
+        assertEquals("경기 성남시 분당구 판교역로 166", c.destQueries.first())
+    }
+
+    @Test fun 후보출력() {
+        for (r in listOf(
+            "탁송)13시출)수원도이치오토월드\n상세:경기 수원시 권선구 고색동 수원도이치오토월드",
+            "충남 당진시 대덕동)당진시대덕1로 100-50 테스트아파트101동/톨포",
+            "탁송)매송고색로843\n상세:경기 수원시 권선구 평동 권선구 평동 54-0(매송고색로 843)",
+            "대전 대덕구 신탄진동)대전 대덕구 대청로43 테스트스카이1단지",
+            "충남 아산시 둔포면)아산시 둔포면",
+            "탁송)권선로 308-5\n상세:경기 수원시 권선구 고색동 1191-0",
+            "수원 권선구 권선로 308-5 도이치 3층 3002 바닥8라인",
+            "화서동 무지개맥주 수원화서역점",
+        )) println("$r\n   => " + CallParser.candidates(r))
+    }
+
+    @Test fun 콜화면_판별() {
+        assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
+        assertTrue(CallParser.looksLikeCall("배정 완료"))
+        assertTrue(!CallParser.looksLikeCall("카카오톡 채팅방"))
+    }
+}
