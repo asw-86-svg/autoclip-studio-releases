@@ -82,6 +82,13 @@ class ScreenshotTest {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
         seed()
         val ctx = RuntimeEnvironment.getApplication()
+        // 미리보기용: 휴대폰에 카카오맵·네이버지도가 깔려 있는 것처럼 (아이콘은 사용자 화면에서 딴 것)
+        val spm = org.robolectric.Shadows.shadowOf(ctx.packageManager)
+        for ((pkg, file) in listOf(MapLauncher.KAKAO to "kakaomap", MapLauncher.NAVER to "navermap")) {
+            spm.installPackage(android.content.pm.PackageInfo().apply { packageName = pkg; applicationInfo = android.content.pm.ApplicationInfo().apply { packageName = pkg } })
+            val bmp = android.graphics.BitmapFactory.decodeStream(javaClass.getResourceAsStream("/icons/$file.png"))
+            spm.setApplicationIcon(pkg, android.graphics.drawable.BitmapDrawable(ctx.resources, bmp))
+        }
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
             listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
         shot("call_kakao", "call", 2700)
