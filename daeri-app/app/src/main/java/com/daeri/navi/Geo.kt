@@ -20,14 +20,17 @@ object Geo {
     /** 후보들을 순서대로 시도해서 처음 찾은 좌표를 돌려준다. 네트워크를 쓰므로 백그라운드에서 호출. */
     fun resolve(ctx: Context, queries: List<String>): Pt? {
         val key = ctx.kakaoKey.trim()
+        // "고덕동"처럼 여러 곳에 있는 이름은 지금 내 위치 근처(약 35km)부터 찾는다
+        val near = Loc.lastPt(ctx)
         // 업체/건물 이름이 있는 콜이면 "화성시 만세구" 같은 동네 이름 후보로 대충 찍지 않는다
         val specific = queries.firstOrNull()?.let { !isAreaOnly(it) } == true
         for (q in queries.take(5)) {
             if (specific && isAreaOnly(q)) continue
-            val ck = "$key|$q"
+            val ck = "$key|$q|" + (near?.let { "${(it.lat * 10).toInt()},${(it.lng * 10).toInt()}" } ?: "")
             cache[ck]?.let { return it }
             if (ck in misses) continue
-            val pt = if (key.isNotEmpty()) kakao(key, "address", q) ?: kakao(key, "keyword", q) else geocoder(ctx, q)
+            val pt = if (key.isNotEmpty()) kakao(key, "address", q) ?: kakao(key, "keyword", q, near) ?: kakao(key, "keyword", q)
+                     else (near?.let { geocoder(ctx, q, it) } ?: geocoder(ctx, q))
             if (pt != null) { cache[ck] = pt; return pt }
             misses += ck
         }
@@ -38,9 +41,11 @@ object Geo {
     @Volatile var lastError: String = ""
 
     @Suppress("DEPRECATION")
-    private fun geocoder(ctx: Context, q: String): Pt? = runCatching {
+    private fun geocoder(ctx: Context, q: String, near: Pt? = null): Pt? = runCatching {
         if (!Geocoder.isPresent()) { lastError = "휴대폰 기본 위치 찾기 없음"; return null }
-        val a = Geocoder(ctx, Locale.KOREA).getFromLocationName(q, 1)?.firstOrNull() ?: return null
+        val g = Geocoder(ctx, Locale.KOREA)
+        val a = (if (near != null) g.getFromLocationName(q, 1, near.lat - 0.32, near.lng - 0.4, near.lat + 0.32, near.lng + 0.4)
+                 else g.getFromLocationName(q, 1))?.firstOrNull() ?: return null
         // 한국 범위를 벗어난 엉뚱한 결과는 버림
         if (a.latitude !in 33.0..39.0 || a.longitude !in 124.0..132.0) return null
         val line = a.getAddressLine(0) ?: q
@@ -60,8 +65,9 @@ object Geo {
 
     private val PROVINCE_SHORT = setOf("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주")
 
-    private fun kakao(key: String, kind: String, q: String): Pt? = runCatching {
-        val url = URL("https://dapi.kakao.com/v2/local/search/$kind.json?size=1&query=" + URLEncoder.encode(q, "UTF-8"))
+    private fun kakao(key: String, kind: String, q: String, near: Pt? = null): Pt? = runCatching {
+        val nearQ = if (near != null) "&x=${near.lng}&y=${near.lat}&radius=20000" else ""
+        val url = URL("https://dapi.kakao.com/v2/local/search/$kind.json?size=1$nearQ&query=" + URLEncoder.encode(q, "UTF-8"))
         val con = url.openConnection() as HttpURLConnection
         con.setRequestProperty("Authorization", "KakaoAK $key")
         con.connectTimeout = 5000; con.readTimeout = 5000

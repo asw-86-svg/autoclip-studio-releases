@@ -37,7 +37,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private enum class Screen { HOME, CALL, CALLS, LOG, DAY, EDIT, TRASH, PASTE, SETTINGS }
+    private enum class Screen { HOME, CALL, CALLS, AUTO, LOG, DAY, EDIT, TRASH, PASTE, SETTINGS }
 
     // ---------- 색 ----------
     private val black = 0xFF000000.toInt()
@@ -124,7 +124,7 @@ class MainActivity : Activity() {
             Screen.HOME -> super.onBackPressed()
             Screen.DAY -> go(dayBack)
             Screen.EDIT -> go(editBack)
-            Screen.TRASH -> go(Screen.DAY)
+            Screen.TRASH -> go(trashBack)
             else -> go(Screen.HOME)
         }
     }
@@ -133,6 +133,7 @@ class MainActivity : Activity() {
 
     private fun handleIntent(i: Intent?) {
         when (i?.getStringExtra("open")) {
+            "auto" -> screen = Screen.AUTO
             "call" -> screen = Screen.CALL
             "calls" -> screen = Screen.CALLS
             "log" -> screen = Screen.LOG
@@ -170,6 +171,7 @@ class MainActivity : Activity() {
             Screen.CALL -> renderCallScreen()
             Screen.CALLS -> renderCalls()
             Screen.LOG -> renderLog()
+            Screen.AUTO -> renderAuto()
             Screen.DAY -> renderDay()
             Screen.EDIT -> renderEditor()
             Screen.TRASH -> renderTrash()
@@ -205,7 +207,7 @@ class MainActivity : Activity() {
         // 오늘의 운행 (출근 = 목표 입력 + 자동 읽기 켜기, 퇴근 = 끄기)
         val working = serviceEnabled() && !detectPaused
         val today = dayKey(System.currentTimeMillis())
-        val tToday = Store.trips(this).filter { dayKey(it.time) == today }
+        val tToday = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
         val netToday = tToday.sumOf { it.net }
         val goal = Store.goal(this, today)
         root.addView(card().apply {
@@ -269,7 +271,8 @@ class MainActivity : Activity() {
         root.addView(card(pad = 0).apply {
             addView(menuItem("📋", "받은 콜 목록", if (todayCalls > 0) "$todayCalls" else null) { callsShown = 50; go(Screen.CALLS) })
             addView(divider())
-            addView(menuItem("🚗", "자동운행기록", if (tToday.isNotEmpty()) "${tToday.size}" else null) { day = Calendar.getInstance(); dayBack = Screen.HOME; go(Screen.DAY) })
+            val pending = Store.trips(this@MainActivity).count { !it.confirmed }
+            addView(menuItem("🚗", "자동운행기록", if (pending > 0) "$pending" else null) { go(Screen.AUTO) })
             addView(divider())
             addView(menuItem("📅", "운행일지", null) { logMonth = Calendar.getInstance(); go(Screen.LOG) })
             addView(divider())
@@ -287,7 +290,7 @@ class MainActivity : Activity() {
     }
 
     private fun clockOut(today: String) {
-        val list = Store.trips(this).filter { dayKey(it.time) == today }
+        val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
         val net = list.sumOf { it.net }
         val goal = Store.goal(this, today)
         val msg = buildString {
@@ -568,7 +571,7 @@ class MainActivity : Activity() {
         setTop("운행일지", true)
         dayBack = Screen.LOG
         val ym = ymFmt.format(logMonth.time)
-        val monthTrips = Store.trips(this).filter { ymFmt.format(Date(it.time)) == ym }
+        val monthTrips = Store.trips(this).filter { it.confirmed && ymFmt.format(Date(it.time)) == ym }
 
         // 월 이동 + 달력/목록
         root.addView(LinearLayout(this).apply {
@@ -666,13 +669,84 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------------- 하루 기록 (자동운행기록) ----------------
+    // ---------------- 자동운행기록 (자동으로 잡힌 콜 → [일지에 추가]) ----------------
+    private var trashBack = Screen.DAY
+
+    private fun renderAuto() {
+        val pending = Store.trips(this).filter { !it.confirmed }.sortedByDescending { it.time }
+        setTop("자동운행기록", true, if (pending.isNotEmpty()) "목록삭제" else null) {
+            confirm("자동운행기록 ${pending.size}개를 지울까요?\n(삭제된 기록에서 30일 동안 되살릴 수 있어요)") {
+                pending.forEach { Store.deleteTrip(this, it.id) }; render()
+            }
+        }
+        if (pending.isEmpty()) {
+            root.addView(card().apply {
+                addView(text("자동으로 잡힌 콜이 없어요.\n대리 앱에서 콜을 수락하면 여기에 쌓여요.", 15f, grey))
+            })
+        }
+        val f = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
+        pending.forEach { t ->
+            root.addView(card().apply {
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    addView(appIcon(CallInfo(t.program, "", "", emptyList(), emptyList(), pkg = t.pkg)))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
+                        addView(text(t.program.ifEmpty { "대리 앱" }, 18f, white, bold = true).apply { maxLines = 1 })
+                        addView(text(f.format(Date(t.time)), 13f, grey).apply { maxLines = 1 })
+                    }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL; gravity = Gravity.END
+                        addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
+                        addView(text(won(t.fare), 22f, blue, bold = true).apply { maxLines = 1 })
+                    })
+                })
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(12), dp(8), dp(12), dp(8))
+                    background = rounded(innerBg, 12)
+                    layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
+                    listOfNotNull(
+                        dot(blue, "●  ${t.origin.ifEmpty { "(출발지 없음)" }}"),
+                        if (t.via.isNotEmpty()) dot(0xFFF5A623.toInt(), "●  ${t.via} 경유") else null,
+                        dot(red, "●  ${t.dest.ifEmpty { "(도착지 없음)" }}"),
+                    ).forEach { line ->
+                        addView(text(line, 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(5), 0, dp(5)) })
+                    }
+                })
+                addView(row(listOf(
+                    android.widget.ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.ic_map); scaleType = android.widget.ImageView.ScaleType.CENTER
+                        background = rounded(innerBg, 12); minimumHeight = dp(52)
+                        setOnClickListener {
+                            val h = Store.history(this@MainActivity).firstOrNull { it.key == t.callKey }
+                            if (h != null) openCall(h) else navigate(App.KAKAO, listOf(t.dest).filter { it.isNotBlank() })
+                        }
+                    },
+                    smallButton("삭제", 0xFF3A2224.toInt(), red) {
+                        confirm("이 기록을 지울까요?") { Store.deleteTrip(this@MainActivity, t.id); render() }
+                    },
+                    smallButton("일지에 추가", blue) { openEditor(t) },
+                ), weights = listOf(0.7f, 1.2f, 2.6f)))
+            })
+        }
+        val trashed = Store.trash(this).size
+        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { trashBack = Screen.AUTO; go(Screen.TRASH) })
+
+        // 일일 합계 (오늘 일지에 넣은 것)
+        val today = dayKey(System.currentTimeMillis())
+        val done = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
+        footer.visibility = View.VISIBLE
+        footer.setPadding(dp(16), dp(12), dp(16), dp(14))
+        footer.addView(summaryBlock("일일 합계", done))
+    }
+
+    // ---------------- 하루 기록 ----------------
     private fun renderDay() {
-        val isToday = dayKey(day.timeInMillis) == dayKey(System.currentTimeMillis())
-        val title = if (isToday) "자동운행기록" else SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
+        val title = SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
         setTop(title, true, "+ 입력") { openEditor(null) }
         val key = dayKey(day.timeInMillis)
-        val list = Store.trips(this).filter { dayKey(it.time) == key }.sortedBy { it.time }
+        val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == key }.sortedBy { it.time }
         if (list.isEmpty()) {
             root.addView(card().apply { addView(text("이 날은 기록이 없어요.", 15f, grey)) })
         }
@@ -698,7 +772,7 @@ class MainActivity : Activity() {
         }
         root.addView(button("+ 새일지 등록", blue) { openEditor(null) })
         val trashed = Store.trash(this).size
-        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { go(Screen.TRASH) })
+        if (trashed > 0) root.addView(button("🗑 삭제된 기록 보기 ($trashed)", innerBg) { trashBack = Screen.DAY; go(Screen.TRASH) })
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
         footer.addView(summaryBlock("일일 합계", list))
@@ -888,8 +962,9 @@ class MainActivity : Activity() {
                 fare = v(fare), viaFee = v(viaFee), tip = v(tip),
                 commission = v(commission), insurance = v(insurance), transport = v(transport), transportMode = transportMode,
                 memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
+                confirmed = true, pkg = t?.pkg.orEmpty(),
             ))
-            toast("저장했어요")
+            toast(if (t != null && !t.confirmed) "운행일지에 추가했어요" else "저장했어요")
             go(editBack)
         }
 

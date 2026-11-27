@@ -18,6 +18,16 @@ object Loc {
 
     private fun pt(l: Location) = Geo.Pt(l.latitude, l.longitude, "현재 위치", "")
 
+    /** 기다리지 않고 바로 쓸 수 있는 최근 위치 (30분 이내) — 주소 찾을 때 근처 우선용 */
+    @SuppressLint("MissingPermission")
+    fun lastPt(ctx: Context): Geo.Pt? {
+        if (!hasPerm(ctx)) return null
+        val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val l = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time } ?: return null
+        return if (System.currentTimeMillis() - l.time < 30 * 60_000L) pt(l) else null
+    }
+
     @SuppressLint("MissingPermission")
     fun current(ctx: Context, cb: (Geo.Pt?) -> Unit) {
         if (!hasPerm(ctx)) { cb(null); return }

@@ -295,6 +295,14 @@ class CallParserTest {
         assertTrue(c.destQueries.first(), c.destQueries.first().contains("원삼면"))
     }
 
+    @Test fun 카카오_배정완료_경유() {
+        val c = CallParser.parse(listOf("배정 완료", "배정취소", "메뉴", "고덕동", "에이스퍼스트고덕", "서정동, 가수동 경유",
+            "경기 오산시 누읍동", "경기 오산시 누읍로 20", "카드 | 확정", "36,800", "고객과 통화"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals("고덕동 에이스퍼스트고덕", c.originRaw)
+        assertEquals("서정동, 가수동", c.via)
+        assertEquals("경기 오산시 누읍로 20", c.destQueries.first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

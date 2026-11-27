@@ -71,6 +71,10 @@ object Store {
         val fare: Int = 0, val viaFee: Int = 0, val tip: Int = 0,
         val commission: Int = 0, val insurance: Int = 0, val transport: Int = 0, val transportMode: String = "",
         val memo: String = "", val callKey: String = "",
+        /** false = 자동운행기록에만 있음(일지에 추가 전), true = 운행일지에 들어감 */
+        val confirmed: Boolean = true,
+        /** 콜을 읽은 대리 앱 패키지 (아이콘 표시용) */
+        val pkg: String = "",
     ) {
         val income get() = fare + viaFee + tip
         val expense get() = commission + insurance + transport
@@ -90,6 +94,7 @@ object Store {
                     o.optInt("fare"), o.optInt("viaFee"), o.optInt("tip"),
                     o.optInt("commission"), o.optInt("insurance"), o.optInt("transport"), o.optString("transportMode"),
                     o.optString("memo"), o.optString("key"),
+                    o.optBoolean("ok", true), o.optString("pkg"),
                 ) else {
                     // 예전 형식(수입/지출/제목)에서 옮기기
                     val title = o.optString("title")
@@ -106,6 +111,7 @@ object Store {
         put("fare", t.fare); put("viaFee", t.viaFee); put("tip", t.tip)
         put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
         put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
+        put("ok", t.confirmed); put("pkg", t.pkg)
     }
 
     private fun saveTrips(ctx: Context, list: List<Trip>) {
@@ -173,11 +179,11 @@ object Store {
         val deposit = CallParser.won(c.deposit)
         upsertTrip(ctx, Trip(
             id = c.capturedAt, time = c.capturedAt,
-            origin = c.originDisplay, dest = c.destDisplay, program = programName(c.source),
+            origin = c.originDisplay, via = c.via, dest = c.destDisplay, program = programName(c.source),
             fare = fare,
             // 입금액(로지)이 있으면 그게 수수료, 없으면 설정한 수수료율로 계산
             commission = if (deposit > 0) deposit else fare * ctx.commissionRate / 100,
-            callKey = c.key,
+            callKey = c.key, confirmed = false, pkg = c.pkg,
         ))
     }
 
@@ -278,7 +284,7 @@ object Store {
         put("source", c.source); put("originRaw", c.originRaw); put("destRaw", c.destRaw)
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
-        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended); put("partner", c.partner)
+        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended); put("partner", c.partner); put("via", c.via)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -290,7 +296,7 @@ object Store {
         destQueries = o.optJSONArray("dq")?.strings().orEmpty(),
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
         accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
-        autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"), partner = o.optBoolean("partner"),
+        autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"), partner = o.optBoolean("partner"), via = o.optString("via"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),

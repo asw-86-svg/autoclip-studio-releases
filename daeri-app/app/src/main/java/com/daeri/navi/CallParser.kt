@@ -26,6 +26,8 @@ data class CallInfo(
     val recommended: Boolean = false,
     /** 카카오 '제휴' 콜 */
     val partner: Boolean = false,
+    /** 경유지 ("서정동, 가수동 경유") */
+    val via: String = "",
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -198,6 +200,8 @@ object CallParser {
             if (n in KAKAO_SKIP.map(::norm)) continue
             body += l.split("\n").map { it.trim() }.filter { it.isNotEmpty() && isAddrLike(it) || it.length in 2..6 && it.endsWith("동") }
         }
+        val via = body.filter { "경유" in it }.joinToString(" ") { it.replace(Regex("""\s*경유\s*$"""), "").trim() }
+        body.removeAll { "경유" in it }
         if (body.size < 2) return null
         // 도착지는 보통 '경기 …', '서울 …' 처럼 시·도로 시작한다
         var split = (1 until body.size).firstOrNull { body[it].split(" ").first() in PROVINCES }
@@ -207,7 +211,7 @@ object CallParser {
         val dest = body.subList(split, body.size).joinToString(" ")
         return CallInfo(
             source.ifEmpty { "카카오T 대리" }, origin, dest,
-            candidates(origin), candidates(dest), fare, accepted = true,
+            candidates(origin), candidates(dest), fare, accepted = true, via = via,
         )
     }
 
@@ -274,6 +278,8 @@ object CallParser {
             else if (l.any { it in '가'..'힣' }) break   // 주소 아닌 글자(버튼 등)를 만나면 멈춤
             i--
         }
+        val via = body.filter { "경유" in it }.joinToString(" ") { it.replace(Regex("""\s*경유\s*$"""), "").trim() }
+        body.removeAll { "경유" in it }
         if (body.size < 2) return null
         // 도착지는 '경기 …', '서울 …' 처럼 시·도로 시작
         var split = (1 until body.size).firstOrNull { body[it].split(" ").first() in PROVINCES } ?: (body.size / 2)
@@ -284,7 +290,7 @@ object CallParser {
             ?: lines.drop(k).firstOrNull { MONEY.containsMatchIn(it) && !it.contains('|') }
             ?: lines.drop(k).firstOrNull { MONEY.containsMatchIn(it) }
         val fare = fareLine?.let { MONEY.find(it)?.value }.orEmpty()
-        return CallInfo(source.ifEmpty { "카카오T 대리" }, origin, dest, candidates(origin), candidates(dest), fare)
+        return CallInfo(source.ifEmpty { "카카오T 대리" }, origin, dest, candidates(origin), candidates(dest), fare, via = via)
     }
 
     // ---------- 4. 문자/카톡에서 붙여넣은 글 ----------
@@ -457,7 +463,8 @@ object CallParser {
             if (!ok) break
             kept.add(0, t)
         }
-        return kept.filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }.joinToString(" ")
+        // "경기 오산시 누읍동 경기 오산시" 처럼 겹친 지역명은 한 번만
+        return kept.filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }.distinct().joinToString(" ")
     }
 
     private fun isRegionToken(t: String): Boolean =
