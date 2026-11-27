@@ -320,6 +320,16 @@ class CallParserTest {
         assertEquals("수원시 권선구 권선동 찬스돔나이트", c.originQueries.first())
     }
 
+    @Test fun 카카오_카드_광주_능평동() {
+        val c = CallParser.parse(listOf("도착", "약 32분 운행", "출발", "도보 1.1km(약18분 )",
+            "출발", "매탄동 매탄위브하늘채아파트 102동", "도착", "경기 광주시 능평동", "광주오포금강KCC아파트", "약 32분 운행",
+            "실제\n수익", "카드 | 확정 | 28,000", "넘기기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals(18, c.walkMin)
+        assertEquals(32, c.driveMin)
+        assertEquals(28000, CallParser.won(c.fare))
+        assertTrue(c.destRaw, c.destRaw.contains("광주오포금강KCC아파트"))
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))
