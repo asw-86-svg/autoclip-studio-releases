@@ -107,14 +107,15 @@ class CallReaderService : AccessibilityService() {
     /** 말풍선에 출발지까지 도보 시간 표시 (멀면 차 시간) */
     private fun bubbleEta(call: CallInfo) {
         bubble?.text = "출/도"
+        bubble?.setPadding(0, 0, 0, 0)
         Loc.current(this) { here ->
             if (here == null) return@current
             Thread {
                 val o = Geo.resolve(this, call.originQueries) ?: return@Thread
-                val km = Route.straightKm(here, o)
-                val walkMin = (Route.walkSec(km) + 59) / 60
-                val label = if (walkMin <= 60) "🚶${walkMin}분" else "🚗${(Route.drive(this, here, o).sec + 59) / 60}분"
-                handler.post { if (Store.current(this)?.key == call.key) bubble?.text = "출/도\n$label" }
+                val t = Route.toOrigin(Route.straightKm(here, o))
+                val min = (t.sec + 59) / 60
+                val label = if (t.walk) "🚶${min}분" else "🚌약${min}분"
+                handler.post { if (Store.current(this)?.key == call.key) bubble?.text = "출발지까지\n$label" }
             }.start()
         }
     }
@@ -147,7 +148,8 @@ class CallReaderService : AccessibilityService() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = TextView(this).apply {
             text = "출/도"
-            textSize = 13f
+            textSize = 12f
+            setLineSpacing(0f, 0.95f)
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
@@ -159,7 +161,7 @@ class CallReaderService : AccessibilityService() {
         }
         val (bx, by) = Store.bubblePos(this)
         val lp = WindowManager.LayoutParams(
-            dp(72), dp(72),
+            dp(84), dp(84),
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,

@@ -53,6 +53,23 @@ object Route {
         return Info((hours * 3600).toInt(), (km * 1000).toInt(), 0, true)
     }
 
+    /** 걸어서 이만큼(분) 이하면 도보, 넘으면 대중교통으로 안내 */
+    const val WALK_LIMIT_MIN = 20
+
+    /**
+     * 대중교통 대략 시간(초): 도로거리 ×1.3 을 평균 시속 20km 로 + 기다림 10분 + 정류장까지 걷기 5분.
+     * (실제 버스 시간표 아님. 정확한 시간은 지도앱 대중교통 길찾기로)
+     */
+    fun transitSec(straightKm: Double): Int = (straightKm * 1.3 / 20.0 * 3600).toInt() + 15 * 60
+
+    /** 출발지까지 어떻게 가는 게 좋은지: 걸어서 20분 이하면 도보, 아니면 대중교통 */
+    data class ToOrigin(val walk: Boolean, val sec: Int)
+
+    fun toOrigin(straightKm: Double): ToOrigin {
+        val w = walkSec(straightKm)
+        return if (w <= WALK_LIMIT_MIN * 60) ToOrigin(true, w) else ToOrigin(false, transitSec(straightKm))
+    }
+
     /** 걸어서 걸리는 시간(초): 도로거리 ×1.25, 시속 4.5km */
     fun walkSec(straightKm: Double): Int = (straightKm * 1.25 / 4.5 * 3600).toInt()
 }

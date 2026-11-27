@@ -15,4 +15,12 @@ class RouteTest {
         // 가까운 거리(직선 1km)는 걸어서 15~20분
         assertTrue(Route.walkSec(1.0) / 60 in 15..20)
     }
+
+    @Test fun 출발지까지_도보20분_넘으면_대중교통() {
+        val near = Route.toOrigin(1.0)      // 걸어서 약 17분
+        assertTrue(near.walk)
+        val far = Route.toOrigin(5.0)       // 걸어서 1시간 넘음 → 대중교통
+        assertTrue(!far.walk)
+        assertTrue("대중교통 ${far.sec / 60}분", far.sec / 60 in 25..45)
+    }
 }

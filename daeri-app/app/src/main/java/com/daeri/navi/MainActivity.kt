@@ -676,10 +676,14 @@ class MainActivity : Activity() {
         val sb = StringBuilder()
         var walkSec = 0
         if (walkKm != null) {
-            walkSec = Route.walkSec(walkKm)
-            big = "🚶 출발지까지 걸어서 ${dur(walkSec)}"
-            sb.append("   ${km((walkKm * 1250).toInt())} · ${hm.format(Date(now + walkSec * 1000L))} 도착")
-            drive1?.let { sb.append("  (🚗 차로는 ${dur(it.sec)})") }
+            // 걸어서 20분 이하면 도보, 넘으면 대중교통(대략)
+            val t = Route.toOrigin(walkKm)
+            walkSec = t.sec
+            big = if (t.walk) "🚶 출발지까지 걸어서 ${dur(t.sec)}" else "🚌 출발지까지 대중교통 약 ${dur(t.sec)}"
+            sb.append("   ${km((walkKm * 1250).toInt())} · ${hm.format(Date(now + t.sec * 1000L))} 도착")
+            if (!t.walk) sb.append("  (🚶 걸어서 ${dur(Route.walkSec(walkKm))})")
+            drive1?.let { sb.append("  (🚗 차로 ${dur(it.sec)})") }
+            if (!t.walk) sb.append("\n   ※ 🚌 시간은 거리로 계산한 대략값 · 정확한 건 [🚌 출발지로] 버튼")
             sb.append("\n")
         } else {
             big = if (here == null) "🚶 지금 위치를 몰라요" else "🚶 출발지 위치를 못 찾았어요"
@@ -689,7 +693,7 @@ class MainActivity : Activity() {
             sb.append("🚗 출발지 → 도착지  ${km(leg2.meters)} · ${dur(leg2.sec)}")
             if (leg2.toll > 0) sb.append(" · 톨비 ${won(leg2.toll)}원")
             sb.append("\n🏁 도착지 도착 예정  ${hm.format(Date(now + (walkSec + leg2.sec) * 1000L))}")
-            sb.append(if (walkKm != null) " (걸어서 출발지 → 차로 이동)" else " (지금 출발지에서 출발 기준)")
+            sb.append(if (walkKm != null) " (출발지까지 이동 + 차로 이동)" else " (지금 출발지에서 출발 기준)")
         } else {
             sb.append("🏁 ${if (o == null) "출발지" else "도착지"} 위치를 못 찾아 도착 예정 시간은 계산 못 했어요")
         }
