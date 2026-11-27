@@ -19,6 +19,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
+import com.daeri.navi.Store.bubbleVibrate
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.kakaoBubble
 import kotlin.math.abs
@@ -494,7 +495,7 @@ class CallReaderService : AccessibilityService() {
         bubble?.animate()?.scaleX(1.3f)?.scaleY(1.3f)?.setDuration(180)?.withEndAction {
             bubble?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(180)?.start()
         }?.start()
-        runCatching {
+        if (bubbleVibrate) runCatching {
             @Suppress("DEPRECATION")
             val vib = getSystemService(VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createOneShot(80, 120))

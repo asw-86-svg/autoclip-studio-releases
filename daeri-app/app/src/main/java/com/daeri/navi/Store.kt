@@ -322,6 +322,11 @@ object Store {
         get() = p(this).getInt("bubbleKeepSec", 300)
         set(v) = p(this).edit().putInt("bubbleKeepSec", v).apply()
 
+    /** 새 콜로 말풍선이 바뀔 때 진동 (기본 켜짐) */
+    var Context.bubbleVibrate: Boolean
+        get() = p(this).getBoolean("bubbleVibrate", true)
+        set(v) = p(this).edit().putBoolean("bubbleVibrate", v).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()

@@ -25,6 +25,7 @@ import com.daeri.navi.MapLauncher.App
 import com.daeri.navi.MapLauncher.Mode
 import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
+import com.daeri.navi.Store.bubbleVibrate
 import com.daeri.navi.Store.commissionRate
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
@@ -1076,6 +1077,11 @@ class MainActivity : Activity() {
                 }
             }))
             addView(text("시간이 지나면 말풍선이 숨겨지고, 다음 콜이 오면 다시 떠요.", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
+            addView(button("새 콜일 때 진동: " + if (bubbleVibrate) "켜짐" else "꺼짐", if (bubbleVibrate) blue else innerBg) {
+                bubbleVibrate = !bubbleVibrate
+                toast(if (bubbleVibrate) "새 콜이 오면 짧게 진동해요" else "진동을 껐어요")
+                render()
+            })
             addView(button(
                 "카카오T 대리 콜에도 말풍선 띄우기: " + if (kakaoBubble) "켜짐" else "꺼짐",
                 if (kakaoBubble) blue else innerBg,
