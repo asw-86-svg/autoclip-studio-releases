@@ -116,6 +116,19 @@ class CallParserTest {
         assertEquals("화성시 만세구 현대자동차 팔탄서비스", CallParser.candidates("(화성시만세구)현대자동차 팔탄서비스/톨포").first())
     }
 
+    @Test fun 콜마너_자모분리_글자() {
+        // 콜마너는 한글을 자모 분리형(NFD)으로 준다 → 화면엔 같아 보여도 다른 글자
+        fun nfd(x: String) = java.text.Normalizer.normalize(x, java.text.Normalizer.Form.NFD)
+        val c = CallParser.parse(listOf(
+            "17", "1:45", nfd("복합75K"), nfd("*후불)5천후불/\$평택카길애그리퓨리나공장"),
+            nfd("(성동구)+옥수동한남하이츠@/톨포~~"), nfd("닫기"), nfd("수락"),
+        ))!!
+        assertEquals("평택카길애그리퓨리나공장", c.originQueries.first())
+        assertEquals("성동구 옥수동 한남하이츠", c.destQueries.first())
+        assertEquals("복합75K", c.fare)
+        assertTrue(CallParser.looksLikeCall(nfd("출발지\n도착지")))
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

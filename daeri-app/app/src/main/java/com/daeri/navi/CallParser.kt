@@ -42,15 +42,25 @@ object CallParser {
 
     private fun norm(s: String) = s.replace(Regex("""\s+"""), "")
 
+    /**
+     * 앱마다 한글을 다르게 저장한다. 콜마너는 자모가 분리된 형태(NFD)라 화면엔 같아 보여도
+     * 글자 비교가 안 된다 → 완성형으로 합치고(NFKC: 전각 기호도 일반 기호로),
+     * 눈에 안 보이는 문자(폭 없는 공백 등)는 지우고, 특수 공백은 일반 공백으로.
+     */
+    fun clean(s: String): String =
+        java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC)
+            .replace(Regex("""\p{Cf}"""), "")
+            .replace(Regex("""[\u00A0\u2000-\u200A\u202F\u3000]"""), " ")
+
     /** 콜 화면처럼 보이는지 빠르게 판단 (접근성 이벤트마다 호출됨). */
     fun looksLikeCall(joined: String): Boolean {
-        val n = norm(joined)
+        val n = norm(clean(joined))
         return ("출발지" in n && "도착지" in n) || "배정완료" in n ||
             "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n)
     }
 
     fun parse(texts: List<String>, source: String = ""): CallInfo? {
-        val lines = texts.map { it.trim() }.filter { it.isNotEmpty() }
+        val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
         return parseLabeled(lines, source)
             ?: parseKakao(lines, source)
@@ -246,7 +256,7 @@ object CallParser {
     }
 
     private fun preclean(raw: String): String {
-        var s = raw.replace('\n', ' ')
+        var s = clean(raw).replace('\n', ' ')
         // "(성동구)+옥수동…" → "성동구)옥수동…"  (뒤에서 '지역)본문' 형식으로 처리됨)
         s = s.replace(Regex("""^\s*\(([^)]+)\)\s*\+?\s*"""), "$1)")
         s = s.replace(Regex("""[@~$+*]"""), " ")
