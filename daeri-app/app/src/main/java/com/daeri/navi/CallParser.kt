@@ -20,6 +20,8 @@ data class CallInfo(
     val deposit: String = "",
     /** 읽어온 앱의 패키지 이름 (아이콘 표시용) */
     val pkg: String = "",
+    /** "N초 후 자동취소"(로지), "N초 자동배차 중"(I-Driver) — 취소·거부하지 않으면 배차되는 화면 */
+    val autoDispatch: Boolean = false,
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -136,6 +138,7 @@ object CallParser {
             source.ifEmpty { "배차정보" }, originRaw.orEmpty(), destRaw.orEmpty(),
             oq, dq, fare, phones.distinctBy { it.second }, notes,
             accepted = accepted, deposit = fields["deposit"].orEmpty(),
+            autoDispatch = lines.any { l -> norm(l).let { "자동취소" in it || "자동배차중" in it } },
         )
     }
 

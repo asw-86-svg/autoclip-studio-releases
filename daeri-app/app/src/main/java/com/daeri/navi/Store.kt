@@ -87,6 +87,13 @@ object Store {
         p(ctx).edit().putString("trips", arr.toString()).apply()
     }
 
+    /** 배차취소·거부된 콜: 자동운행기록에서 빼고, 받은 콜 목록에선 '수락 전'으로 되돌린다 */
+    fun unrecordCall(ctx: Context, key: String) {
+        saveTrips(ctx, trips(ctx).filterNot { it.callKey == key && System.currentTimeMillis() - it.time < 3600_000L })
+        writeHistory(ctx, history(ctx).map { if (it.key == key) it.copy(accepted = false) else it })
+        current(ctx)?.let { if (it.key == key) p(ctx).edit().putString("current", toJson(it.copy(accepted = false)).toString()).apply() }
+    }
+
     fun upsertTrip(ctx: Context, t: Trip) = saveTrips(ctx, trips(ctx).filter { it.id != t.id } + t)
     fun deleteTrip(ctx: Context, id: Long) = saveTrips(ctx, trips(ctx).filter { it.id != id })
 
@@ -180,7 +187,7 @@ object Store {
         put("source", c.source); put("originRaw", c.originRaw); put("destRaw", c.destRaw)
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
-        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg)
+        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -192,6 +199,7 @@ object Store {
         destQueries = o.optJSONArray("dq")?.strings().orEmpty(),
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
         accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
+        autoDispatch = o.optBoolean("auto"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),

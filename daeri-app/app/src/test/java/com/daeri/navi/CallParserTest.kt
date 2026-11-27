@@ -156,6 +156,7 @@ class CallParserTest {
         assertTrue(c.destQueries.first(), c.destQueries.first().startsWith("서울 성동구 옥수동"))
         assertEquals("80000원", c.fare)
         assertTrue(!c.accepted)
+        assertTrue("자동취소 화면은 자동배차", c.autoDispatch)
     }
 
     @Test fun 자동읽기는_자유글_형식_안씀() {
@@ -189,6 +190,7 @@ class CallParserTest {
         assertEquals("평택시 원원정길 15-17", c.destQueries.first())
         assertEquals("40,000", c.fare)
         assertTrue("제안 화면은 운행 확정 아님", !c.accepted)
+        assertTrue("자동배차 중 화면", c.autoDispatch)
     }
 
     @Test fun IDriver_목록화면은_콜아님() {

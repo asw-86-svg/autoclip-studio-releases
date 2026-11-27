@@ -77,6 +77,16 @@ class CallReaderService : AccessibilityService() {
             updateForeground()
         }
         if (pkg != null && (pkg == packageName || pkg in IGNORE_PKGS || !isCallApp(pkg))) return
+        // 기사님이 대리 앱에서 [수락]/[즉시배차]를 누르면 → 지금 콜을 자동운행기록에
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            if (pkg != null) {
+                val words = (event.text?.map { it.toString() }.orEmpty() + listOfNotNull(event.contentDescription?.toString()))
+                    .map { it.replace(Regex("""\s+"""), "") }
+                if (words.any { it in ACCEPT_WORDS }) bg.post { acceptCurrent(pkg, "수락 버튼") }
+            }
+            schedule(450L)
+            return
+        }
         // 대리 앱이 알림으로만 콜을 알려줄 때 (화면이 홈이어도)
         if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             if (pkg != null) readNotification(event, pkg)
@@ -96,11 +106,32 @@ class CallReaderService : AccessibilityService() {
         bg.postAtTime(scanTask, at)
     }
 
+    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기")
+    private val CANCEL_WORDS = listOf("취소되었습니다", "거부성공", "거부되었습니다", "배차가취소", "오더거부성공")
+
+    /** 지금 콜을 '배정'으로 바꾸고 자동운행기록에 넣는다 */
+    private fun acceptCurrent(pkg: String, why: String) {
+        val cur = Store.current(this) ?: return
+        if (cur.accepted || cur.pkg != pkg || System.currentTimeMillis() - cur.capturedAt > 10 * 60_000L) return
+        Store.setCurrent(this, cur.copy(accepted = true))
+        status("🚗 ${cur.source} 콜 수락($why) → 자동운행기록에 넣었어요: ${cur.originDisplay} → ${cur.destDisplay}")
+    }
+
+    /** 배차취소·거부가 확인되면 방금 넣은 기록을 뺀다 */
+    private fun cancelCurrent(pkg: String) {
+        val cur = Store.current(this) ?: return
+        if (!cur.accepted || cur.pkg != pkg || System.currentTimeMillis() - cur.capturedAt > 10 * 60_000L) return
+        Store.unrecordCall(this, cur.key)
+        status("↩ ${cur.source} 배차취소/거부 → 자동운행기록에서 뺐어요")
+    }
+
     private val callAppCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     /** 대리·탁송 앱만 읽는다. 카톡·문자·브라우저·채팅앱 등은 '출발/도착' 글자가 있어도 무시 */
     private fun isCallApp(pkg: String): Boolean = callAppCache.getOrPut(pkg) {
-        if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) true
+        // 최강대리기사 같은 기록·관리용 앱은 대리 앱이 아니므로 읽지 않는다
+        if ("choigang" in pkg.lowercase() || appLabel(pkg).let { "최강" in it }) false
+        else if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) true
         else appLabel(pkg).let { label ->
             listOf("대리", "로지", "콜마너", "탁송", "기사", "드라이버", "커넥트").any { it in label } || "driver" in label.lowercase()
         }
@@ -148,13 +179,24 @@ class CallReaderService : AccessibilityService() {
             val texts = ArrayList<String>()
             runCatching { collect(root, texts, 0, intArrayOf(0)) }
             if (texts.isEmpty()) continue
-            val looks = CallParser.looksLikeCall(texts.joinToString("\n"))
+            val joined = texts.joinToString("\n")
+            val looks = CallParser.looksLikeCall(joined)
             Store.addDump(this, appName(pkg), texts)
+            // "취소 되었습니다", "오더거부 성공" → 방금 자동배차로 넣은 기록 빼기
+            val n = joined.replace(Regex("""\s+"""), "")
+            if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
             if (!looks) continue
-            val call = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
+            val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
+            // 자동배차 화면(로지 'N초 후 자동취소', I-Driver 'N초 자동배차 중')은 취소·거부 안 하면 배차 → 바로 기록
+            val call = if (parsed.autoDispatch) parsed.copy(accepted = true) else parsed
             // 콜창을 닫은 뒤 나오는 목록·메뉴 화면 글자로 덮어쓰지 않도록 출발·도착 둘 다 있어야 새 콜
             if (call.originRaw.isBlank() || call.destRaw.isBlank()) continue
-            if (call.key == Store.current(this)?.key) {
+            val cur = Store.current(this)
+            if (call.key == cur?.key && call.accepted && !cur.accepted) {
+                Store.setCurrent(this, cur.copy(accepted = true, fare = call.fare.ifEmpty { cur.fare }, deposit = call.deposit.ifEmpty { cur.deposit }))
+                status("🚗 ${call.source} 배정 → 자동운행기록에 넣었어요")
+            }
+            if (call.key == cur?.key) {
                 // 같은 콜: 5분 유지 타이머 다시 시작, 말풍선이 숨겨져 있으면 다시 띄운다
                 if (bubbleFor(pkg)) handler.post { keepBubble(); if (bubble == null) { showBubble(); bubbleEta(call) } }
                 return

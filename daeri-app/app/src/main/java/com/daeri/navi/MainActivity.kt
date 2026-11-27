@@ -62,6 +62,7 @@ class MainActivity : Activity() {
     private var day: Calendar = Calendar.getInstance()
     private var showDump = false
     private var callsShown = 50
+    private var dayBack = Screen.LOG
     private var askedLocation = false
 
     private val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
@@ -112,7 +113,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         when (screen) {
             Screen.HOME -> super.onBackPressed()
-            Screen.DAY -> go(Screen.LOG)
+            Screen.DAY -> go(dayBack)
             else -> go(Screen.HOME)
         }
     }
@@ -237,6 +238,8 @@ class MainActivity : Activity() {
         val todayCalls = Store.history(this).count { dayKey(it.capturedAt) == today }
         root.addView(card(pad = 0).apply {
             addView(menuItem("📋", "받은 콜 목록", if (todayCalls > 0) "$todayCalls" else null) { callsShown = 50; go(Screen.CALLS) })
+            addView(divider())
+            addView(menuItem("🚗", "자동운행기록", if (tToday.isNotEmpty()) "${tToday.size}" else null) { day = Calendar.getInstance(); dayBack = Screen.HOME; go(Screen.DAY) })
             addView(divider())
             addView(menuItem("📅", "운행일지", null) { logMonth = Calendar.getInstance(); go(Screen.LOG) })
             addView(divider())
@@ -502,6 +505,7 @@ class MainActivity : Activity() {
 
     private fun renderLog() {
         setTop("운행일지", true)
+        dayBack = Screen.LOG
         val ym = ymFmt.format(logMonth.time)
         val monthTrips = Store.trips(this).filter { ymFmt.format(Date(it.time)) == ym }
 
@@ -603,7 +607,8 @@ class MainActivity : Activity() {
 
     // ---------------- 하루 기록 ----------------
     private fun renderDay() {
-        val title = SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
+        val isToday = dayKey(day.timeInMillis) == dayKey(System.currentTimeMillis())
+        val title = if (isToday) "자동운행기록" else SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
         setTop(title, true, "+ 입력") { editTrip(null) }
         val key = dayKey(day.timeInMillis)
         val list = Store.trips(this).filter { dayKey(it.time) == key }.sortedBy { it.time }
