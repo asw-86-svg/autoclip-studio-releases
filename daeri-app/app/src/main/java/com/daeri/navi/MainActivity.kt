@@ -311,67 +311,100 @@ class MainActivity : Activity() {
             root.addView(card().apply { addView(text("아직 읽어온 콜이 없어요.\n대리 프로그램에서 콜 화면을 열면 자동으로 나타납니다.", 15f, grey)) })
             return
         }
-        val time = SimpleDateFormat("HH:mm", Locale.KOREA).format(Date(c.capturedAt))
         root.addView(card().apply {
-            addView(text("${c.source} · $time" + (if (c.fare.isNotEmpty()) " · ${c.fare}" else "") + if (c.accepted) " · 배정" else " · 수락 전", 13f, grey))
-
-            // 도착시간 (도보 1순위)
-            val (big, small) = etaViews()
-            addView(big); addView(small)
-            computeEta(c, big, small)
-            addView(space(10))
-
-            addView(text("🔵 출발지", 14f, blue, bold = true))
-            addView(text(c.originDisplay.ifEmpty { "(없음)" }, 20f, white, bold = true))
-            if (c.originRaw.isNotEmpty() && c.originRaw != c.originDisplay) addView(text(c.originRaw, 12f, grey))
-            val oLabel = text("", 12f, 0xFF7FB2FF.toInt()); addView(oLabel)
-            addView(row(listOf(
-                button("카카오맵\n🚌 출발지로", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
-                button("네이버\n🚌 출발지로", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
-            )))
-            addView(text("출발지까지는 대중교통 길찾기로 열려요 (지도앱에서 도보·택시로 바꿀 수 있어요)", 12f, grey))
-            addView(space(10))
-
-            addView(text("🔴 도착지", 14f, red, bold = true))
-            addView(text(c.destDisplay.ifEmpty { "(없음)" }, 20f, white, bold = true))
-            if (c.destRaw.isNotEmpty() && c.destRaw != c.destDisplay) addView(text(c.destRaw, 12f, grey))
-            val dLabel = text("", 12f, 0xFF7FB2FF.toInt()); addView(dLabel)
-            addView(row(listOf(
-                button("카카오맵\n도착지로", kakaoYellow, black) { navigate(App.KAKAO, c.destQueries) },
-                button("네이버\n도착지로", naverGreen) { navigate(App.NAVER, c.destQueries) },
-            )))
-            addView(row(listOf(
-                button("출발→도착 경로\n(카카오)", innerBg) { fullRoute(App.KAKAO, c) },
-                button("출발→도착 경로\n(네이버)", innerBg) { fullRoute(App.NAVER, c) },
-            )))
-            addView(space(6))
-            addView(row(listOf(
-                button("🚌 집까지 대중교통\n(카카오)", 0xFF2B3A55.toInt()) { goHome(App.KAKAO) },
-                button("🚌 집까지 대중교통\n(네이버)", 0xFF2B3A55.toInt()) { goHome(App.NAVER) },
-            )))
-
-            if (c.phones.isNotEmpty()) {
-                addView(space(6))
-                c.phones.take(6).forEach { (label, num) ->
-                    addView(button("📞 $label  $num", innerBg) {
-                        startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + num.filter { it.isDigit() })))
+            // 대리 앱 이름 · 수락 전 / 요금
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(appIcon(c))
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
+                    addView(text(c.source, 19f, white, bold = true).apply { maxLines = 1 })
+                    addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
+                        textSize = 12f; setPadding(dp(8), dp(2), dp(8), dp(2))
+                        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(4) }
                     })
-                }
-            }
-            if (c.notes.isNotEmpty()) {
-                addView(space(6))
-                addView(text(c.notes.take(300) + if (c.notes.length > 300) "…" else "", 13f, 0xFFDDDDDD.toInt()))
-            }
-            addView(space(6))
-            addView(button("운행 끝 (말풍선 숨기기)", 0xFF4A4A50.toInt()) {
-                Store.setCurrent(this@MainActivity, null)
-                CallReaderService.instance?.hideBubble()
-                go(Screen.HOME)
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                val fareWon = CallParser.won(c.fare)
+                if (c.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.END
+                    addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
+                    addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 27f, blue, bold = true).apply { maxLines = 1 })
+                })
             })
 
-            resolveAsync(c.originQueries) { oLabel.text = locLabel(it) }
-            resolveAsync(c.destQueries) { dLabel.text = locLabel(it) }
+            // 지도: 출발(파란 핀) / 도착(빨간 핀)
+            addView(mapView(c))
+
+            // 출발지 → 대중교통 길안내
+            addView(space(14))
+            addView(text(dot(blue, "●  출발지"), 14f, blue, bold = true))
+            addView(text(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, 21f, white, bold = true))
+            addView(row(listOf(
+                button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
+                button("🚌 네이버지도", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
+            )))
+
+            addView(View(this@MainActivity).apply {
+                setBackgroundColor(line)
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(20); bottomMargin = dp(16) }
+            })
+
+            // 도착지 + 출발→도착 경로 (자동차)
+            addView(text(dot(red, "●  도착지"), 14f, red, bold = true))
+            addView(text(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, 21f, white, bold = true))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(14))
+                background = rounded(innerBg, 14)
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
+                addView(text("🧭 출발 → 도착 경로", 15f, white, bold = true))
+                addView(row(listOf(
+                    button("🚗 카카오맵", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
+                    button("🚗 네이버지도", naverGreen) { fullRoute(App.NAVER, c) },
+                )))
+            })
+            addView(text("출발지 버튼은 대중교통, 경로 버튼은 자동차 길안내로 열려요", 12f, 0xFF7D7D84.toInt()).apply { setPadding(0, dp(8), 0, 0) })
         })
+    }
+
+    /** 앱 안의 작은 지도 (Leaflet + 무료 지도). 출발·도착 위치를 찾으면 핀을 찍는다 */
+    @android.annotation.SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+    private fun mapView(c: CallInfo): View {
+        val web = android.webkit.WebView(this)
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = true
+        web.setBackgroundColor(0xFF1E1E21.toInt())
+        // 지도를 움직일 때 바깥 화면이 같이 스크롤되지 않게
+        web.setOnTouchListener { v, e ->
+            if (e.action == android.view.MotionEvent.ACTION_DOWN) v.parent.requestDisallowInterceptTouchEvent(true)
+            if (e.action == android.view.MotionEvent.ACTION_UP || e.action == android.view.MotionEvent.ACTION_CANCEL) v.parent.requestDisallowInterceptTouchEvent(false)
+            false
+        }
+        var loaded = false
+        var pending: String? = null
+        web.webViewClient = object : android.webkit.WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView, url: String) {
+                loaded = true
+                pending?.let { view.evaluateJavascript(it, null) }
+            }
+        }
+        web.loadUrl("file:///android_asset/map.html")
+        Thread {
+            val o = Geo.resolve(this, c.originQueries)
+            val d = Geo.resolve(this, c.destQueries)
+            fun js(p: Geo.Pt?) = if (p == null) "null,null" else "${p.lat},${p.lng}"
+            val call = "setPoints(${js(o)},${js(d)});"
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                if (loaded) web.evaluateJavascript(call, null) else pending = call
+            }
+        }.start()
+        return android.widget.FrameLayout(this).apply {
+            background = rounded(innerBg, 14)
+            clipToOutline = true
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(260)).apply { topMargin = dp(14) }
+            addView(web, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        }
     }
 
     private fun locLabel(p: Geo.Pt?) =
