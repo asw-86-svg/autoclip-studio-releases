@@ -303,6 +303,12 @@ class CallParserTest {
         assertEquals("경기 오산시 누읍로 20", c.destQueries.first())
     }
 
+    @Test fun 카카오_경유지_상세주소() {
+        val v = CallParser.parseViaDetail(listOf("운행 시작 전", "경유지 상세주소", "중앙동", "(서정동) 서정리역", "초평동", "오산시 가수행복로 19", "닫기"))
+        assertEquals("중앙동 (서정동) 서정리역 → 초평동 오산시 가수행복로 19", v)
+        assertTrue(CallParser.parseViaDetail(listOf("배정 완료", "고덕동")) == null)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

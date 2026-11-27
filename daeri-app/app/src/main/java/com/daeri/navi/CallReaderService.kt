@@ -229,6 +229,13 @@ class CallReaderService : AccessibilityService() {
             Store.addDump(this, appName(pkg), texts)
             // "취소 되었습니다", "오더거부 성공" → 방금 자동배차로 넣은 기록 빼기
             val n = joined.replace(Regex("""\s+"""), "")
+            // 카카오 '경유지 상세주소' 창 → 지금 콜의 경유지를 자세하게
+            CallParser.parseViaDetail(texts)?.let { via ->
+                Store.current(this)?.takeIf { it.pkg == pkg && it.via != via }?.let { cur ->
+                    Store.updateVia(this, cur.key, via)
+                    status("🟠 경유지 자세히: $via")
+                }
+            }
             if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
             // 수락한 뒤에 나오는 배정 화면이 보이면 → 방금 콜을 수락한 것으로 기록
             else if (ASSIGNED_WORDS.any { it in n }) acceptCurrent(pkg, "배정 화면")

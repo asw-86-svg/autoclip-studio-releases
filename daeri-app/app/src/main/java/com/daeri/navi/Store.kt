@@ -164,6 +164,14 @@ object Store {
         current(ctx)?.let { if (it.key == key) p(ctx).edit().putString("current", toJson(it.copy(accepted = false)).toString()).apply() }
     }
 
+    /** 지금 콜의 경유지를 더 자세한 주소로 바꾼다 (자동운행기록의 같은 콜도) */
+    fun updateVia(ctx: Context, key: String, via: String) {
+        current(ctx)?.let { if (it.key == key) p(ctx).edit().putString("current", toJson(it.copy(via = via)).toString()).apply() }
+        writeHistory(ctx, history(ctx).map { if (it.key == key) it.copy(via = via) else it })
+        val tr = trips(ctx)
+        if (tr.any { it.callKey == key && !it.confirmed }) saveTrips(ctx, tr.map { if (it.callKey == key && !it.confirmed) it.copy(via = via) else it })
+    }
+
     fun upsertTrip(ctx: Context, t: Trip) = saveTrips(ctx, trips(ctx).filter { it.id != t.id } + t)
     fun deleteTrip(ctx: Context, id: Long) {
         val (gone, keep) = trips(ctx).partition { it.id == id }

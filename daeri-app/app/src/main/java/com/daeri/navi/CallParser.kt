@@ -223,6 +223,31 @@ object CallParser {
     private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과",
         // 카카오T 대리 화면 메뉴 글자
         "콜대기", "콜수요", "리스트설정", "추천가", "제휴", "콜리스트", "정렬옵션", "새로고침", "콜찾기", "귀가지원", "단독배정", "선호도착", "나의예약", "이벤트", "메뉴")
+    /**
+     * 카카오 '경유지 상세주소' 창: "경유지 상세주소 / 중앙동 / (서정동) 서정리역 / 초평동 / 오산시 가수행복로 19 / 닫기"
+     * → "중앙동 (서정동) 서정리역 → 초평동 오산시 가수행복로 19". 해당 창이 아니면 null
+     */
+    fun parseViaDetail(texts: List<String>): String? {
+        val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
+        val start = lines.indexOfFirst { "경유지상세주소" in norm(it) }
+        if (start < 0) return null
+        val body = lines.drop(start + 1).takeWhile { norm(it) != "닫기" && norm(it) != "확인" }
+            .filter { it.any { ch -> ch in '가'..'힣' || ch.isDigit() } }
+        if (body.isEmpty()) return null
+        // '동' 이름 줄 + 자세한 주소 줄을 한 묶음으로
+        val stops = ArrayList<String>()
+        var i = 0
+        while (i < body.size) {
+            val area = body[i]
+            val next = body.getOrNull(i + 1)
+            if (next != null && Regex("""^[가-힣0-9]+(동|읍|면|리|가)$""").matches(area.replace(" ", "")) &&
+                !Regex("""^[가-힣0-9]+(동|읍|면|리|가)$""").matches(next.replace(" ", ""))) {
+                stops += "$area $next"; i += 2
+            } else { stops += area; i++ }
+        }
+        return stops.joinToString(" → ")
+    }
+
     /** 대리 앱 메뉴·결제 글자인지 (주소가 아님) */
     fun isMenuText(t: String): Boolean = NOT_ADDR.any { it in norm(t) }
 
