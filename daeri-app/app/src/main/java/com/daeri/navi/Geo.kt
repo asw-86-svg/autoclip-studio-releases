@@ -34,9 +34,12 @@ object Geo {
         return null
     }
 
+    /** 마지막 위치 찾기 실패 이유 (문제 해결용) */
+    @Volatile var lastError: String = ""
+
     @Suppress("DEPRECATION")
     private fun geocoder(ctx: Context, q: String): Pt? = runCatching {
-        if (!Geocoder.isPresent()) return null
+        if (!Geocoder.isPresent()) { lastError = "휴대폰 기본 위치 찾기 없음"; return null }
         val a = Geocoder(ctx, Locale.KOREA).getFromLocationName(q, 1)?.firstOrNull() ?: return null
         // 한국 범위를 벗어난 엉뚱한 결과는 버림
         if (a.latitude !in 33.0..39.0 || a.longitude !in 124.0..132.0) return null
@@ -45,7 +48,7 @@ object Geo {
         // 검색어가 업체/건물 이름이었다면 이 결과는 버리고 지도앱 검색에 맡긴다.
         if (isAreaOnly(line) && !isAreaOnly(q)) return null
         Pt(a.latitude, a.longitude, line, q)
-    }.getOrNull()
+    }.onFailure { lastError = "기본 위치 찾기 오류: ${it.javaClass.simpleName} ${it.message.orEmpty().take(60)}" }.getOrNull()
 
     private val AREA_END = Regex("""(시|군|구|읍|면|동|리|가|도|대한민국)$""")
 
@@ -66,5 +69,8 @@ object Geo {
         val doc = JSONObject(body).getJSONArray("documents").optJSONObject(0) ?: return null
         val label = doc.optString("place_name").ifEmpty { doc.optString("address_name") }
         Pt(doc.getString("y").toDouble(), doc.getString("x").toDouble(), label, q)
+    }.onFailure {
+        lastError = if (it is java.io.IOException && (it.message.orEmpty().contains("401") || it.message.orEmpty().contains("403")))
+            "카카오 키 오류(키 확인 · 카카오맵 사용 설정 ON 필요)" else "카카오 검색 오류: ${it.javaClass.simpleName} ${it.message.orEmpty().take(60)}"
     }.getOrNull()
 }

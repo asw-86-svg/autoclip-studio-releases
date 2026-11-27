@@ -176,6 +176,27 @@ class CallParserTest {
         assertEquals("60000원", c.fare)
     }
 
+    @Test fun IDriver_자동배차_팝업() {
+        val lines = listOf("5초 자동배차 중....", "[즉시배차]시 배차 확정 됩니다.",
+            "출발", "자배)(801M)SK)후불)탁)30일/당진.밤절로 2-8",
+            "도착", "평택.원원정길 15-17",
+            "요금", "40,000", "기타", "원천징수 3.3% 차감",
+            "현재위치에서 출발지까지의 거리 : 800.0M", "※ 거부해도 패널티가 발생하지 않음.",
+            "즉시배차", "바로 배차됩니다", "거부")
+        assertTrue(CallParser.looksLikeCall(lines.joinToString("\n")))
+        val c = CallParser.parse(lines, "I-Driver", allowFreeText = false)!!
+        assertEquals("당진시 밤절로 2-8", c.originQueries.first())
+        assertEquals("평택시 원원정길 15-17", c.destQueries.first())
+        assertEquals("40,000", c.fare)
+        assertTrue("제안 화면은 운행 확정 아님", !c.accepted)
+    }
+
+    @Test fun IDriver_목록화면은_콜아님() {
+        val c = CallParser.parse(listOf("조회", "배차", "거리", "출발지", "도착지", "요금",
+            "7.9\n당진푸르지오1차\$;;\n25", "태)완후)송산바른식탁", "1.4\n1)안성시새터1길63/톨포/\n65"), "I-Driver", allowFreeText = false)
+        assertTrue(c == null)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -34,6 +34,8 @@ object CallParser {
         "고객" to "customer", "메모" to "memo", "적요" to "summary", "전화" to "phone",
         "전화2" to "phone2", "고객ID" to "cid", "오더번호" to "order", "차량번호" to "car",
         "발주사이용개시번호" to "x", "이용개시번호" to "x", "발주사" to "x",
+        // I-Driver 콜 팝업: 출발 / 도착 / 요금 / 기타
+        "출발" to "origin", "도착" to "dest", "기타" to "memo",
     )
 
     private val PROVINCES = setOf(
@@ -70,7 +72,8 @@ object CallParser {
     fun looksLikeCall(joined: String): Boolean {
         val n = norm(clean(joined))
         return ("출발지" in n && "도착지" in n) || "배정완료" in n ||
-            "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n)
+            "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n) ||
+            ("출발" in n && "도착" in n) // 대리 앱만 읽으므로 넓게 잡아도 된다
     }
 
     /** allowFreeText=false: 자동 읽기에서는 '출발: / 도착:' 자유 글 형식은 쓰지 않는다 (채팅 등 오인 방지) */
@@ -117,7 +120,10 @@ object CallParser {
             Regex("""금액\s*[:：]\s*([\d,]+\s*원?)""").find(it)?.groupValues?.get(1)
         }.orEmpty()
         // 상세배차정보(요금 칸이 있는 화면)만 '배정된 콜'로 본다. "N초 후 자동취소" 같은 확인 화면은 제외
-        val accepted = fields.containsKey("fare") || lines.any { norm(it) == "상세배차정보" }
+        // 단, "N초 자동배차 중", "자동취소", [거부]/[즉시배차]/[수락] 버튼이 있는 제안·확인 화면은 아직 확정이 아님
+        val offerWords = listOf("자동배차", "자동취소", "즉시배차", "거부", "수락")
+        val isOffer = lines.any { l -> offerWords.any { it in norm(l) } }
+        val accepted = !isOffer && (fields.containsKey("fare") || lines.any { norm(it) == "상세배차정보" })
         val phones = extractPhones(summary) +
             listOfNotNull(fields["phone"]?.let { "전화" to it }, fields["phone2"]?.let { "전화2" to it })
         return CallInfo(
@@ -246,6 +252,13 @@ object CallParser {
                 ROAD.find(clean)?.let { m ->
                     val road = m.groupValues[1]; val num = trimZero(m.groupValues[2])
                     val pre = regionBefore(clean, m.range.first).ifEmpty { regionTokens.joinToString(" ") }
+                    // "당진 밤절로 2-8" 처럼 '시'를 뺀 도시 이름이 바로 앞에 있으면 "당진시 …" 로도
+                    val shortCity = clean.substring(0, m.range.first).trim().split(" ").lastOrNull()
+                        ?.takeIf { pre.isEmpty() && it.length in 2..3 && it.all { ch -> ch in '가'..'힣' } && !isRegionToken(it) && !it.endsWith("동") }
+                    if (shortCity != null) {
+                        out += "${shortCity}시 $road $num"
+                        out += "$shortCity $road $num"
+                    }
                     out += "$pre $road $num".trim()
                     // '당진시대덕1로' → '대덕1로' 처럼 도로명 앞에 붙은 시·군 이름 제거
                     regionTokens.firstOrNull { road.startsWith(it) && road.length > it.length + 1 }?.let {

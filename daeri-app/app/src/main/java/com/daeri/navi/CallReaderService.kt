@@ -192,6 +192,7 @@ class CallReaderService : AccessibilityService() {
                 } else if (o == null) lines += "출 - 위치 못 찾음"
                 else lines += "출 - 내 위치 모름"
                 lines += if (o != null && d != null) "출 → 도 🚗${shortDur(Route.drive(this, o, d).sec)}" else "출 → 도 ${if (d == null) "도착지 못 찾음" else "-"}"
+                if (o == null || d == null) status("📍 위치 못 찾음 (${if (o == null) "출발 " + call.originQueries.firstOrNull() else "도착 " + call.destQueries.firstOrNull()}) ${Geo.lastError}")
                 handler.post {
                     if (Store.current(this)?.key == call.key) { timeLines = lines; renderBubble() }
                 }
@@ -247,13 +248,13 @@ class CallReaderService : AccessibilityService() {
             }
             elevation = dp(6).toFloat()
         }
-        val (bx, by) = Store.bubblePos(this)
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT,
-        ).apply { gravity = Gravity.TOP or Gravity.START; x = bx; y = by }
+        ).apply { gravity = Gravity.TOP or Gravity.START; x = 0; y = dp(200) }
+        bubbleLp = lp
 
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var moved = false
         v.setOnTouchListener { _, e ->
@@ -267,12 +268,57 @@ class CallReaderService : AccessibilityService() {
                     if (moved) { lp.x = startX + dx.toInt(); lp.y = startY + dy.toInt(); wm.updateViewLayout(v, lp) }
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (moved) Store.setBubblePos(this, lp.x, lp.y) else openApp()
+                    if (moved) {
+                        val (w, h) = screenSize()
+                        Store.setBubbleFrac(this,
+                            lp.x.toFloat() / (w - v.width).coerceAtLeast(1),
+                            lp.y.toFloat() / (h - v.height).coerceAtLeast(1))
+                        placeBubble()
+                    } else openApp()
                 }
             }
             true
         }
         runCatching { wm.addView(v, lp); bubble = v }
+        // 크기가 정해진 뒤 저장된 비율 위치로, 내용이 바뀌어 크기가 바뀌어도 화면 안에 있도록
+        v.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or2, ob ->
+            if (r - l != or2 - ol || b - t != ob - ot) handler.post { placeBubble() }
+        }
+        v.post { placeBubble() }
+    }
+
+    private var bubbleLp: WindowManager.LayoutParams? = null
+
+    private fun screenSize(): Pair<Int, Int> {
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        return if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val b = wm.currentWindowMetrics.bounds
+            b.width() to b.height()
+        } else {
+            val dm = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(dm)
+            dm.widthPixels to dm.heightPixels
+        }
+    }
+
+    /** 저장된 비율 위치를 지금 화면 크기에 맞춰 적용 (폴드를 접고 펴도 화면 안에) */
+    private fun placeBubble() {
+        val v = bubble ?: return
+        val lp = bubbleLp ?: return
+        val (w, h) = screenSize()
+        val (fx, fy) = Store.bubbleFrac(this)
+        val maxX = (w - v.width).coerceAtLeast(0)
+        val maxY = (h - v.height - dp(24)).coerceAtLeast(0)
+        lp.x = (fx * maxX).toInt().coerceIn(0, maxX)
+        lp.y = (fy * maxY).toInt().coerceIn(dp(24).coerceAtMost(maxY), maxY)
+        runCatching { (getSystemService(WINDOW_SERVICE) as WindowManager).updateViewLayout(v, lp) }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 폴드 접기/펴기, 화면 회전 → 말풍선을 새 화면 안으로
+        handler.postDelayed({ placeBubble() }, 300)
+        handler.postDelayed({ placeBubble() }, 1200)
     }
 
     fun hideBubble() {

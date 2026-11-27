@@ -131,8 +131,10 @@ object Store {
     fun setStatus(ctx: Context, msg: String) = p(ctx).edit().putString("status", msg).apply()
     fun status(ctx: Context): String = p(ctx).getString("status", "").orEmpty()
 
-    fun bubblePos(ctx: Context): Pair<Int, Int> = p(ctx).getInt("bx", 0) to p(ctx).getInt("by", 400)
-    fun setBubblePos(ctx: Context, x: Int, y: Int) = p(ctx).edit().putInt("bx", x).putInt("by", y).apply()
+    /** 말풍선 위치를 화면 비율(0~1)로 저장 → 폴드 외부/내부 화면 어디서든 같은 자리 */
+    fun bubbleFrac(ctx: Context): Pair<Float, Float> = p(ctx).getFloat("bfx", 1f) to p(ctx).getFloat("bfy", 0.25f)
+    fun setBubbleFrac(ctx: Context, fx: Float, fy: Float) =
+        p(ctx).edit().putFloat("bfx", fx.coerceIn(0f, 1f)).putFloat("bfy", fy.coerceIn(0f, 1f)).apply()
 
     // ---------------- JSON ----------------
     private fun toJson(c: CallInfo, trimNotes: Boolean = false) = JSONObject().apply {
