@@ -554,28 +554,41 @@ class MainActivity : Activity() {
     /** 지도앱 버튼을 얇게 (콜 상세에서 지도를 크게 보이도록) */
     private fun slim(b: Button) = b.apply { minHeight = dp(42); minimumHeight = dp(42); setPadding(0, 0, 0, 0); textSize = 14f }
 
+
+    /**
+     * 지도 핀 옆 글씨 (카카오 콜카드처럼): 출발 "도보 714m(약12분)" 또는 "🚌 약 35분", 도착 "약 23분 운행".
+     * 콜카드에 적힌 값이 있으면 그대로, 없으면 내 위치·주소로 계산. 백그라운드에서 호출.
+     */
+    private fun pinInfo(c: CallInfo, o: Geo.Pt?, d: Geo.Pt?): Pair<String, String> {
+        fun dist(m: Int) = if (m < 1000) "${(m + 5) / 10 * 10}m" else String.format(Locale.KOREA, "%.1fkm", m / 1000.0)
+        val here = Loc.lastPt(this)
+        val oInfo = when {
+            c.walkMin in 1..Route.WALK_LIMIT_MIN -> "도보 ${dist((c.walkKm * 1000).toInt())}(약${c.walkMin}분)"
+            c.walkMin > Route.WALK_LIMIT_MIN -> "🚌 약${(Route.transitSec(c.walkKm / 1.25) + 59) / 60}분"
+            here != null && o != null -> {
+                val km = Route.straightKm(here, o)
+                val t = Route.toOrigin(km)
+                if (t.walk) "도보 ${dist((km * 1250).toInt())}(약${(t.sec + 59) / 60}분)" else "🚌 약${(t.sec + 59) / 60}분"
+            }
+            else -> ""
+        }
+        val dInfo = when {
+            c.driveMin > 0 -> "약 ${c.driveMin}분 운행"
+            o != null && d != null -> Route.drive(this, o, d).let { r -> "약 ${(r.sec + 59) / 60}분 운행 · ${dist(r.meters)}" }
+            else -> ""
+        }
+        return oInfo to dInfo
+    }
+
     /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
     private fun addrRow(addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(4), 0, 0)
-        // 주소는 되도록 한 줄 — 길면 글씨를 18 → 13까지 줄이고, 그래도 길면 두 줄로 (뒷부분이 잘려 안 보이는 일 없게)
+        // 주소는 되도록 한 줄 — 길면 글씨를 18 → 12까지 줄이고, 그래도 길면 두 줄로 (뒷부분이 잘려 안 보이는 일 없게)
         // 두 줄이 될 때 "매송고\n색로"처럼 낱말 중간에서 끊기지 않게 글자 사이에 '줄 안 바꿈'(U+2060)
         val keepWords = addr.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }
-        addView(text(keepWords, 18f, white, bold = true).apply {
-            maxLines = 2; gravity = Gravity.CENTER_VERTICAL
-            post {
-                val w = width - paddingLeft - paddingRight
-                if (w <= 0) return@post
-                var sp = 18f
-                val pnt = android.text.TextPaint(paint)
-                while (sp > 13f) {
-                    pnt.textSize = sp * resources.displayMetrics.scaledDensity
-                    if (pnt.measureText(addr) <= w) break
-                    sp -= 1f
-                }
-                pnt.textSize = sp * resources.displayMetrics.scaledDensity
-                textSize = if (pnt.measureText(addr) <= w) sp else 16f
-            }
+        addView(FitAddrText(this@MainActivity, addr, keepWords).apply {
+            setTextColor(white); setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER_VERTICAL
         }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         // 오른쪽: [⌖][카카오][네이버] 붙여서 한 덩어리
         addView(LinearLayout(this@MainActivity).apply {
@@ -661,7 +674,8 @@ class MainActivity : Activity() {
             // 못 찾았으면 이유(카카오 키 오류 등)를 지도에 글자로
             val why = if (o == null || d == null) Geo.lastError.replace("\\", "").replace("'", "") else ""
             fun q(t: String) = "'" + t.replace("\\", "").replace("'", "").replace("\n", " ") + "'"
-            val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })});"
+            val (oInfo, dInfo) = pinInfo(c, o, d)
+            val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })},${q(oInfo)},${q(dInfo)});"
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (loaded) web.evaluateJavascript(call, null) else pending = call
@@ -1689,5 +1703,32 @@ class MainActivity : Activity() {
         setPadding(dp(12), dp(10), dp(12), dp(10))
         minHeight = dp(50)
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+    }
+}
+
+/**
+ * 주소 한 줄 맞춤: 칸 폭이 정해질 때(onMeasure) 18 → 12까지 줄여서 한 줄이 되면 그 크기,
+ * 12로도 안 되면 15로 두 줄 (낱말 단위로 끊김). 글자가 잘려 안 보이는 일이 없다.
+ */
+class FitAddrText(ctx: android.content.Context, private val addr: String, private val twoLine: String) : TextView(ctx) {
+    private var lastW = -1
+    init { text = addr; textSize = 18f; maxLines = 2 }
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+        if (MeasureSpec.getMode(widthMeasureSpec) != MeasureSpec.UNSPECIFIED && w > 0 && w != lastW) {
+            lastW = w
+            val dm = resources.displayMetrics
+            val pnt = android.text.TextPaint(paint)
+            var chosen = -1f
+            var sp = 18f
+            while (sp >= 12f) {
+                pnt.textSize = sp * dm.scaledDensity
+                if (android.text.StaticLayout.Builder.obtain(addr, 0, addr.length, pnt, w).build().lineCount == 1) { chosen = sp; break }
+                sp -= 1f
+            }
+            if (chosen > 0) { text = addr; maxLines = 1; paint.textSize = chosen * dm.scaledDensity; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, chosen) }
+            else { text = twoLine; maxLines = 2; setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f) }
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 }

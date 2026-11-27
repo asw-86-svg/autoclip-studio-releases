@@ -51,6 +51,10 @@ class ScreenshotTest {
         val w = 1080
         root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
         root.layout(0, 0, w, h)
+        // 화면이 그려진 뒤 실행되는 일(post)까지 처리하고 다시 배치 — 실제 휴대폰과 같게
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, w, h)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         root.draw(Canvas(bmp))
         File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
