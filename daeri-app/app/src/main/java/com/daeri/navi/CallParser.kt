@@ -341,7 +341,9 @@ object CallParser {
     }
 
     private fun preclean(raw: String): String {
-        // "금액: 80000원", "회사: …" 같은 줄은 주소가 아니므로 뺀다
+        // 카카오 "…오목천동 주소확인필요 제휴 | 약 24분 운행" → "주소확인필요" 앞까지만 주소로
+        val raw = Regex("""\s*주소\s*확인\s*필요[\s\S]*$""").replace(raw, "")
+                // "금액: 80000원", "회사: …" 같은 줄은 주소가 아니므로 뺀다
         var s = clean(raw).lines()
             .filterNot { Regex("""^\s*(금액|요금|회사|전화|연락처)\s*[:：]""").containsMatchIn(it) }
             .joinToString(" ")

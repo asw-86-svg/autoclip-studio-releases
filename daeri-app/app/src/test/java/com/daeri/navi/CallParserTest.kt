@@ -255,6 +255,15 @@ class CallParserTest {
         assertTrue(c == null)
     }
 
+    @Test fun 카카오_주소확인필요() {
+        val c = CallParser.parse(listOf("출발", "수원시영통구 영통동 영통동 975-7",
+            "도착", "수원시권선구 오목천동 주소확인필요", "제휴 | 약 24분 운행",
+            "실제\n수익", "카드 | 확정 | 20,000", "콜받도착", "넘기기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals("수원시 권선구 오목천동", c.destQueries.first())
+        assertTrue(c.destQueries.none { "주소확인" in it || "제휴" in it })
+        assertEquals("수원시 영통구 영통동 975-7", c.originQueries.first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))
