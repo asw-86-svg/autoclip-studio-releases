@@ -65,6 +65,11 @@ class CallReaderService : AccessibilityService() {
         if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) return
         val pkg = event.packageName?.toString()
         if (pkg != null && (pkg == packageName || pkg in IGNORE_PKGS || !isCallApp(pkg))) return
+        // 대리 앱이 알림으로만 콜을 알려줄 때 (화면이 홈이어도)
+        if (type == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            if (pkg != null) readNotification(event, pkg)
+            return
+        }
         // 새 화면·팝업이 뜨면 거의 바로(0.08초), 화면 안 내용이 바뀌는 건 모아서 0.45초에 한 번
         val windowChange = type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || type == AccessibilityEvent.TYPE_WINDOWS_CHANGED
         schedule(if (windowChange) 80L else 450L)
@@ -84,7 +89,31 @@ class CallReaderService : AccessibilityService() {
     /** 대리·탁송 앱만 읽는다. 카톡·문자·브라우저·채팅앱 등은 '출발/도착' 글자가 있어도 무시 */
     private fun isCallApp(pkg: String): Boolean = callAppCache.getOrPut(pkg) {
         if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) true
-        else appLabel(pkg).let { label -> listOf("대리", "로지", "콜마너", "탁송", "기사").any { it in label } }
+        else appLabel(pkg).let { label ->
+            listOf("대리", "로지", "콜마너", "탁송", "기사", "드라이버", "커넥트").any { it in label } || "driver" in label.lowercase()
+        }
+    }
+
+    private fun readNotification(event: AccessibilityEvent, pkg: String) {
+        val texts = ArrayList<String>()
+        event.text?.forEach { t -> t?.toString()?.takeIf { it.isNotBlank() }?.let { texts += it } }
+        (event.parcelableData as? android.app.Notification)?.extras?.let { ex ->
+            listOf("android.title", "android.text", "android.bigText", "android.subText", "android.summaryText").forEach { k ->
+                ex.getCharSequence(k)?.toString()?.takeIf { it.isNotBlank() }?.let { texts += it }
+            }
+            ex.getCharSequenceArray("android.textLines")?.forEach { l -> l?.toString()?.takeIf { it.isNotBlank() }?.let { texts += it } }
+        }
+        val uniq = texts.distinct()
+        if (uniq.isEmpty()) return
+        bg.post {
+            Store.addDump(this, appName(pkg) + " 알림", uniq)
+            // 알림은 대리 앱에서 온 것만 받으므로 '출발: / 도착:' 같은 자유 글 형식도 허용
+            val call = CallParser.parse(uniq, appName(pkg), allowFreeText = true)?.copy(pkg = pkg) ?: return@post
+            if (call.originRaw.isBlank() || call.destRaw.isBlank()) return@post
+            if (call.key == Store.current(this)?.key) return@post
+            Store.setCurrent(this, call.copy(accepted = false))
+            handler.post { showBubble(); pulse(); bubbleEta(call) }
+        }
     }
 
     /** 뒤쪽 스레드에서 실행 */

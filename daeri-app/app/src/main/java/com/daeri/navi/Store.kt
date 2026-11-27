@@ -80,7 +80,7 @@ object Store {
      */
     fun cleanupJunk(ctx: Context) {
         // 대리 앱 이름이나 직접 입력한 것만 진짜 콜로 인정하고, 나머지(채팅앱 등에서 잘못 읽은 것)는 지운다
-        val okNames = listOf("로지", "콜마너", "카카오", "대리", "탁송", "기사", "직접 입력", "공유", "붙여넣기", "배차정보", "콜 수락 화면")
+        val okNames = listOf("로지", "콜마너", "카카오", "대리", "탁송", "기사", "직접 입력", "공유", "붙여넣기", "배차정보", "콜 수락 화면", "드라이버", "커넥트", "Driver", "driver")
         fun bad(src: String) = src.isBlank() || okNames.none { it in src } ||
             "anthropic" in src.lowercase() || "claude" in src.lowercase()
         val hist = history(ctx)
