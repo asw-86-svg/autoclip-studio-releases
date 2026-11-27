@@ -512,35 +512,26 @@ class MainActivity : Activity() {
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
-            // 출발지 → 대중교통 길안내
-            addView(space(14))
+            // 출발지: 주소 옆 [⌖][카카오][네이버] — 대중교통 길안내
+            addView(space(12))
             addView(text(dot(blue, "●  출발지"), 13f, blue, bold = true))
-            addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
-            addView(row(listOf(
-                slim(button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) }),
-                slim(button("🚌 네이버지도", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) }),
-            )))
+            addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue,
+                navBtn("🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
+                navBtn("🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
+            ) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
 
             addView(View(this@MainActivity).apply {
                 setBackgroundColor(line)
-                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(20); bottomMargin = dp(16) }
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(12) }
             })
 
-            // 도착지 + 출발→도착 경로 (자동차)
+            // 도착지: 주소 옆 [⌖][카카오][네이버] — 출발→도착 자동차 길안내
             addView(text(dot(red, "●  도착지"), 13f, red, bold = true))
-            addView(addrRow(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red) { callWeb?.evaluateJavascript("focusPoint('d')", null) })
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = rounded(innerBg, 14)
-                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(10) }
-                addView(text("🧭 출발 → 도착 경로", 14f, white, bold = true))
-                addView(row(listOf(
-                    slim(button("🚗 카카오맵", kakaoYellow, black) { fullRoute(App.KAKAO, c) }),
-                    slim(button("🚗 네이버지도", naverGreen) { fullRoute(App.NAVER, c) }),
-                )))
-            })
-            addView(text("출발지 버튼은 대중교통, 경로 버튼은 자동차 길안내로 열려요", 12f, 0xFF7D7D84.toInt()).apply { setPadding(0, dp(8), 0, 0) })
+            addView(addrRow(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red,
+                navBtn("🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
+                navBtn("🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) },
+            ) { callWeb?.evaluateJavascript("focusPoint('d')", null) })
+            addView(text("출발지 🚌 = 대중교통으로 출발지까지 · 도착지 🚗 = 출발→도착 자동차 길안내 · ⌖ = 지도에서 크게", 12f, 0xFF7D7D84.toInt()).apply { setPadding(0, dp(10), 0, 0) })
         })
     }
 
@@ -548,15 +539,27 @@ class MainActivity : Activity() {
     private fun slim(b: Button) = b.apply { minHeight = dp(42); minimumHeight = dp(42); setPadding(0, 0, 0, 0); textSize = 14f }
 
     /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
-    private fun addrRow(addr: String, color: Int, onFocus: () -> Unit) = LinearLayout(this).apply {
+    private fun addrRow(addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(text(addr, 18f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        setPadding(0, dp(4), 0, 0)
+        // "영통\n동"처럼 낱말 중간에서 줄이 바뀌지 않게: 글자 사이에 '줄 안 바꿈' 표시(U+2060)를 넣는다
+        val keepWords = addr.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }
+        addView(text(keepWords, 18f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         addView(TextView(this@MainActivity).apply {
             text = "⌖"; textSize = 26f; setTextColor(color); gravity = Gravity.CENTER
             background = rounded(innerBg, 12)
             setOnClickListener { onFocus() }
             contentDescription = "지도에서 보기"
-        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { leftMargin = dp(10) })
+        }, LinearLayout.LayoutParams(dp(44), dp(48)).apply { leftMargin = dp(8) })
+        extra.forEach { addView(it, LinearLayout.LayoutParams(dp(56), dp(48)).apply { leftMargin = dp(6) }) }
+    }
+
+    /** 주소 옆 작은 지도앱 버튼 (위: 🚌/🚗, 아래: 앱 이름) */
+    private fun navBtn(icon: String, name: String, color: Int, textColor: Int, onClick: () -> Unit) = TextView(this).apply {
+        text = android.text.SpannableString("$icon\n$name").apply { setSpan(android.text.style.RelativeSizeSpan(1.5f), 0, icon.length, 0) }; textSize = 11f; setTextColor(textColor); setTypeface(typeface, Typeface.BOLD)
+        gravity = Gravity.CENTER; setLineSpacing(0f, 0.95f)
+        background = rounded(color, 12)
+        setOnClickListener { onClick() }
     }
 
     /** 앱 안의 작은 지도 (Leaflet + 무료 지도). 출발·도착 위치를 찾으면 핀을 찍는다 */
@@ -616,7 +619,7 @@ class MainActivity : Activity() {
         return android.widget.FrameLayout(this).apply {
             background = rounded(innerBg, 14)
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(440)).apply { topMargin = dp(14) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(540)).apply { topMargin = dp(14) }
             addView(web, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }
