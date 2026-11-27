@@ -402,7 +402,7 @@ class MainActivity : Activity() {
         return android.widget.FrameLayout(this).apply {
             background = rounded(innerBg, 14)
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(260)).apply { topMargin = dp(14) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(330)).apply { topMargin = dp(14) }
             addView(web, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }

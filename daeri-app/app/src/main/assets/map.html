@@ -8,6 +8,12 @@
   .tag{background:#111;color:#fff;border:0;border-radius:8px;font-weight:700;font-size:13px;padding:3px 8px;box-shadow:0 1px 4px rgba(0,0,0,.5)}
   .tag:before{display:none}
   .msg{position:absolute;left:0;right:0;top:40%;text-align:center;color:#9A9AA0;font:14px sans-serif;z-index:999}
+  /* 운전 중에도 누르기 쉬운 큰 확대/축소 버튼 */
+  .leaflet-touch .leaflet-bar a{width:48px;height:48px;line-height:46px;font-size:28px;background:#2A2A2E;color:#fff;border-bottom-color:#444}
+  .leaflet-touch .leaflet-bar{border:1px solid #555;border-radius:10px;overflow:hidden}
+  .leaflet-control-zoom{margin-right:10px!important;margin-top:10px!important}
+  .fit{position:absolute;right:10px;bottom:28px;z-index:1000;width:48px;height:48px;border-radius:10px;border:1px solid #555;
+       background:#2A2A2E;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center}
   .leaflet-control-attribution{font-size:9px;background:rgba(0,0,0,.4)!important;color:#aaa}
   .leaflet-control-attribution a{color:#ccc}
 </style>
@@ -15,9 +21,18 @@
 </head><body>
 <div id="map"></div>
 <div class="msg" id="msg">위치 찾는 중…</div>
+<div class="fit" id="fit" title="출발·도착 한눈에">⤢</div>
 <script>
   // 기본: 대한민국 가운데
-  var map = L.map('map', {zoomControl: true, attributionControl: true}).setView([36.5, 127.8], 7);
+  var map = L.map('map', {zoomControl: false, attributionControl: true, touchZoom: true, doubleClickZoom: true,
+                          scrollWheelZoom: true, tap: true}).setView([36.5, 127.8], 7);
+  L.control.zoom({position: 'topright', zoomInTitle: '확대', zoomOutTitle: '축소'}).addTo(map);
+  var lastPts = [];
+  document.getElementById('fit').onclick = function () { fitAll(); };
+  function fitAll() {
+    if (lastPts.length == 1) map.setView(lastPts[0], 15);
+    else if (lastPts.length == 2) map.fitBounds(lastPts, {padding: [50, 50]});
+  }
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd', maxZoom: 19,
     attribution: '&copy; OpenStreetMap &copy; CARTO'
@@ -39,8 +54,8 @@
     var msg = document.getElementById('msg');
     if (pts.length == 0) { msg.textContent = '출발지·도착지 위치를 못 찾았어요'; return; }
     msg.style.display = 'none';
-    if (pts.length == 1) map.setView(pts[0], 15);
-    else map.fitBounds(pts, {padding: [40, 40]});
+    lastPts = pts;
+    fitAll();
   }
 </script>
 </body></html>
