@@ -542,17 +542,24 @@ class MainActivity : Activity() {
     private fun addrRow(addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(4), 0, 0)
-        // "영통\n동"처럼 낱말 중간에서 줄이 바뀌지 않게: 글자 사이에 '줄 안 바꿈' 표시(U+2060)를 넣는다
-        val keepWords = addr.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }
-        addView(text(keepWords, 18f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-        addView(TextView(this@MainActivity).apply {
-            text = "⌖"; textSize = 26f; setTextColor(color); gravity = Gravity.CENTER
+        // 주소는 한 줄로 — 길면 글씨가 자동으로 작아진다 (18 → 12)
+        addView(text(addr, 18f, white, bold = true).apply {
+            maxLines = 1; gravity = Gravity.CENTER_VERTICAL
+            setAutoSizeTextTypeUniformWithConfiguration(12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+        }, LinearLayout.LayoutParams(0, dp(30), 1f))
+        // 오른쪽: [⌖][카카오][네이버] 붙여서 한 덩어리
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = rounded(innerBg, 12)
-            setOnClickListener { onFocus() }
-            contentDescription = "지도에서 보기"
-        }, LinearLayout.LayoutParams(dp(44), dp(48)).apply { leftMargin = dp(8) })
-        extra.forEach { addView(it, LinearLayout.LayoutParams(dp(56), dp(48)).apply { leftMargin = dp(6) }) }
+            addView(TextView(this@MainActivity).apply {
+                text = "⌖"; textSize = 24f; setTextColor(color); gravity = Gravity.CENTER
+                setOnClickListener { onFocus() }
+                contentDescription = "지도에서 보기"
+            }, LinearLayout.LayoutParams(dp(42), dp(46)))
+            extra.forEach { addView(it, LinearLayout.LayoutParams(dp(44), dp(46))) }
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
     }
+
 
     /**
      * 주소 옆 작은 지도앱 버튼 — 휴대폰에 깔린 카카오맵/네이버지도 앱 아이콘 + 오른쪽 아래 작은 🚌/🚗.
@@ -563,17 +570,16 @@ class MainActivity : Activity() {
         if (icon == null) return TextView(this).apply {
             text = android.text.SpannableString("$mode\n$name").apply { setSpan(android.text.style.RelativeSizeSpan(1.5f), 0, mode.length, 0) }
             textSize = 11f; setTextColor(textColor); setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER; background = rounded(color, 12)
+            gravity = Gravity.CENTER; background = rounded(color, 10)
             setOnClickListener { onClick() }
         }
         return android.widget.FrameLayout(this).apply {
-            background = rounded(innerBg, 12)
             setOnClickListener { onClick() }
             contentDescription = "$name $mode"
             addView(android.widget.ImageView(this@MainActivity).apply { setImageDrawable(icon) },
-                android.widget.FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER))
-            addView(TextView(this@MainActivity).apply { text = mode; textSize = 12f },
-                android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.BOTTOM).apply { rightMargin = dp(1); bottomMargin = dp(0) })
+                android.widget.FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER))
+            addView(TextView(this@MainActivity).apply { text = mode; textSize = 10f },
+                android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.BOTTOM))
         }
     }
 
