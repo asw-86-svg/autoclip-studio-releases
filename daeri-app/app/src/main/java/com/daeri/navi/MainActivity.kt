@@ -224,13 +224,17 @@ class MainActivity : Activity() {
 
         // 지금 콜
         Store.current(this)?.let { c ->
+            // 카드 전체를 누르면 콜 상세(지도·길안내)로
             root.addView(card().apply {
-                addView(text("지금 콜 · ${c.source}" + if (c.fare.isNotEmpty()) " · ${c.fare}" else "", 13f, grey))
+                setOnClickListener { go(Screen.CALL) }
+                val fareWon = CallParser.won(c.fare)
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    addView(text("지금 콜 · ${c.source}", 13f, grey), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    if (fareWon > 0) addView(text("${won(fareWon)}원", 17f, blue, bold = true))
+                    addView(text("  ›", 22f, grey))
+                })
                 addView(addressBox(c))
-                val (big, small) = etaViews()
-                addView(big); addView(small)
-                computeEta(c, big, small)
-                addView(button("자세히 보기 · 길안내", blue) { go(Screen.CALL) })
             })
         }
 
