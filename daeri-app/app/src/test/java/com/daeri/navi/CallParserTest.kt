@@ -339,6 +339,16 @@ class CallParserTest {
         assertTrue(c == null)
     }
 
+    @Test fun 카카오_배정완료_요금() {
+        val c = CallParser.parse(listOf("배정 완료", "배정취소", "메뉴", "가락동", "다농마트", "경기 수원 영통구 영통동",
+            "경기 수원시 영통구 매영로 366", "카드 | 확정", "32,000", "고객과 통화", "고객과 메시지", "고객과 만날 장소 길찾기"),
+            "카카오T 대리", allowFreeText = false)!!
+        assertTrue(c.accepted)
+        assertEquals(32000, CallParser.won(c.fare))
+        assertEquals("가락동 다농마트", c.originRaw)
+        assertEquals("경기 수원시 영통구 매영로 366", c.destQueries.first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

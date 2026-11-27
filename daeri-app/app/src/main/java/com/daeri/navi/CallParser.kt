@@ -206,10 +206,14 @@ object CallParser {
         if (start < 0) return null
         val body = ArrayList<String>()
         var fare = ""
+        var bodyDone = false
         for (l in lines.drop(start + 1)) {
             val n = norm(l)
-            if (PRICE.matches(l.trim())) { fare = l.trim(); break }
-            if ("카드" in n || "현금" in n || n.startsWith("고객과")) break
+            if (PRICE.matches(l.trim()) || (bodyDone && MONEY.containsMatchIn(l))) { fare = MONEY.find(l)?.value ?: l.trim(); break }
+            // '카드 | 확정' 다음 줄에 요금이 오므로 주소 읽기만 멈추고 요금은 계속 찾는다
+            if ("카드" in n || "현금" in n) { bodyDone = true; continue }
+            if (n.startsWith("고객과")) break
+            if (bodyDone) continue
             if (n in KAKAO_SKIP.map(::norm)) continue
             body += l.split("\n").map { it.trim() }.filter { it.isNotEmpty() && isAddrLike(it) || it.length in 2..6 && it.endsWith("동") }
         }
@@ -380,10 +384,22 @@ object CallParser {
 
     // ---------- 주소 정리: 지도 검색에 쓸 후보를 좋은 순서대로 ----------
     fun candidates(raw: String): List<String> {
-        val out = LinkedHashSet<String>()
         val s = preclean(raw)
         if (s.isEmpty()) return emptyList()
+        // "경기 수원 영통구 영통동 경기 수원시 영통구 매영로 366" 처럼 시·도가 두 번 나오면 뒤쪽(더 자세한) 주소를 먼저
+        run {
+            val toks = s.split(" ")
+            val last = toks.indices.lastOrNull { it > 0 && toks[it] in PROVINCES }
+            if (last != null && toks.subList(0, last).any { it in PROVINCES }) {
+                val tail = toks.subList(last, toks.size).joinToString(" ")
+                return (candidates(tail) + candidatesOne(s)).distinct()
+            }
+        }
+        return candidatesOne(s)
+    }
 
+    private fun candidatesOne(s: String): List<String> {
+        val out = LinkedHashSet<String>()
         val detailIdx = s.indexOf("상세")
         val parts = if (detailIdx >= 0) {
             listOf(s.substring(detailIdx).replace(Regex("""^상세\s*[:：]?\s*"""), ""), s.substring(0, detailIdx))
@@ -517,8 +533,11 @@ object CallParser {
             if (!ok) break
             kept.add(0, t)
         }
+        // "경기 수원 영통구 영통동 경기 수원시 영통구" 처럼 시·도가 두 번 나오면 뒤쪽(정식 이름)만 쓴다
+        val lastProv = kept.indexOfLast { it in PROVINCES }
+        val kept2 = if (lastProv > 0) kept.subList(lastProv, kept.size) else kept
         // "경기 오산시 누읍동 경기 오산시" 처럼 겹친 지역명은 한 번만
-        return kept.filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }.distinct().joinToString(" ")
+        return kept2.filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }.distinct().joinToString(" ")
     }
 
     private fun isRegionToken(t: String): Boolean =

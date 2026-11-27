@@ -248,7 +248,7 @@ object Store {
             fare = fare,
             // 입금액(로지)이 있으면 그게 수수료, 없으면 설정한 수수료율로 계산
             commission = if (deposit > 0) deposit else fare * ctx.commissionRate / 100,
-            callKey = c.key, confirmed = false, pkg = c.pkg,
+            callKey = c.key, confirmed = ctx.autoToLog, pkg = c.pkg,
         ))
     }
 
@@ -331,6 +331,11 @@ object Store {
     var Context.dayStartHour: Int
         get() = p(this).getInt("dayStartHour", 6)
         set(v) = p(this).edit().putInt("dayStartHour", v).apply()
+
+    /** 수락한 콜을 바로 운행일지에 넣을지 (기본 켜짐). 끄면 자동운행기록에서 [일지에 추가]로 넣는다 */
+    var Context.autoToLog: Boolean
+        get() = p(this).getBoolean("autoToLog", true)
+        set(v) = p(this).edit().putBoolean("autoToLog", v).apply()
 
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)

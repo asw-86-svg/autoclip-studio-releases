@@ -26,6 +26,7 @@ import com.daeri.navi.MapLauncher.Mode
 import com.daeri.navi.Store.bubbleKeepSec
 import com.daeri.navi.Store.bubbleMode
 import com.daeri.navi.Store.bubbleVibrate
+import com.daeri.navi.Store.autoToLog
 import com.daeri.navi.Store.commissionRate
 import com.daeri.navi.Store.dayStartHour
 import com.daeri.navi.Store.detectPaused
@@ -1099,6 +1100,12 @@ class MainActivity : Activity() {
         })
 
         root.addView(card().apply {
+            addView(button("수락한 콜 바로 일지에 넣기: " + if (autoToLog) "켜짐" else "꺼짐", if (autoToLog) blue else innerBg) {
+                autoToLog = !autoToLog
+                toast(if (autoToLog) "수락한 콜이 바로 운행일지에 들어가요" else "자동운행기록에서 [일지에 추가]를 눌러야 들어가요")
+                render()
+            })
+            addView(space(12))
             addView(text("하루가 바뀌는 시각", 16f, white, bold = true))
             addView(text("이 시각 전까지는 전날 운행으로 계산해요 (목표·오늘 합계·운행일지)", 12f, grey))
             addView(row(listOf(0, 4, 5, 6, 7).map { h ->
