@@ -222,6 +222,13 @@ class CallParserTest {
         assertEquals("경기 화성시 동탄구 동탄순환대로3길 27-22", c.destQueries.first())
     }
 
+    @Test fun 아이콘_글꼴문자_제거() {
+        val c = CallParser.parse(listOf("출발", "화성시 효행구 정남면보통리 수원과학대학교", "도착", "\uE001 화성시 동탄구 산척동 중흥에스클래스에듀하이아파트",
+            "실제수익", "카드 | 확정 | 22,400", "닫기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertTrue(c.destQueries.first(), c.destQueries.first().startsWith("화성시 동탄구 산척동"))
+        assertTrue(c.destRaw.none { it == '\uE001' })
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -60,6 +60,8 @@ object CallParser {
     fun clean(s: String): String =
         java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFKC)
             .replace(Regex("""\p{Cf}"""), "")
+            // 아이콘 글꼴 문자(♥ 등 사용자 정의 영역), 깨진 글자, 그림 기호는 지운다
+            .replace(Regex("""[\p{Co}\p{Cs}\uFFFD\p{So}]"""), "")
             .replace(Regex("""[\u00A0\u2000-\u200A\u202F\u3000]"""), " ")
 
     /** 콜 화면처럼 보이는지 빠르게 판단 (접근성 이벤트마다 호출됨). */
