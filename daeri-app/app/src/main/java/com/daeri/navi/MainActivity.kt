@@ -29,6 +29,8 @@ import com.daeri.navi.Store.bubbleVibrate
 import com.daeri.navi.Store.autoToLog
 import com.daeri.navi.Store.commissionRate
 import com.daeri.navi.Store.dayStartHour
+import com.daeri.navi.Store.dayFixed
+import com.daeri.navi.Store.monthFixed
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoBubble
@@ -216,7 +218,7 @@ class MainActivity : Activity() {
         val working = serviceEnabled() && !detectPaused
         val today = dayKey(System.currentTimeMillis())
         val tToday = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
-        val netToday = tToday.sumOf { it.net }
+        val netToday = tToday.sumOf { it.net } - dayFix(tToday)
         val goal = Store.goal(this, today)
         root.addView(card().apply {
             addView(text("오늘의 운행", 14f, grey, bold = true))
@@ -254,7 +256,8 @@ class MainActivity : Activity() {
                     layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(10) }
                 })
             })
-            addView(totalsRow(tToday.sumOf { it.income }, tToday.sumOf { it.expense }))
+            addView(totalsRow(tToday.sumOf { it.income }, tToday.sumOf { it.expense } + dayFix(tToday)))
+            fixedNote(dayFix(tToday), "일고정비")?.let { addView(it) }
         })
 
         // 지금 콜
@@ -299,11 +302,11 @@ class MainActivity : Activity() {
 
     private fun clockOut(today: String) {
         val list = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
-        val net = list.sumOf { it.net }
+        val net = list.sumOf { it.net } - dayFix(list)
         val goal = Store.goal(this, today)
         val msg = buildString {
             append("오늘 ${list.size}콜\n")
-            append("수입 ${won(list.sumOf { it.income })}원 · 지출 ${won(list.sumOf { it.expense })}원\n")
+            append("수입 ${won(list.sumOf { it.income })}원 · 지출 ${won(list.sumOf { it.expense } + dayFix(list))}원\n")
             append("순익 ${won(net)}원")
             goal?.let { g ->
                 val d = net - g
@@ -608,7 +611,13 @@ class MainActivity : Activity() {
         // 월 합계 (아래 고정)
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
-        footer.addView(summaryBlock("${logMonth.get(Calendar.MONTH) + 1}월 합계", monthTrips))
+        // 월고정비 + 일고정비 × 운행한 날
+        val fixed = monthFixed + dayFixed * byDay.size
+        val note = listOfNotNull(
+            monthFixed.takeIf { it > 0 }?.let { "월 ${won(it)}" },
+            dayFixed.takeIf { it > 0 && byDay.isNotEmpty() }?.let { "일 ${won(it)}×${byDay.size}일" },
+        ).joinToString(" + ")
+        footer.addView(summaryBlock("${logMonth.get(Calendar.MONTH) + 1}월 합계", monthTrips, fixed = fixed, fixedLabel = "고정비($note)"))
     }
 
     private fun renderCalendar(byDay: Map<String, List<Store.Trip>>) {
@@ -652,7 +661,7 @@ class MainActivity : Activity() {
                 }, LinearLayout.LayoutParams(dp(30), dp(30)))
                 val list = byDay[key].orEmpty()
                 cell.addView(text(if (list.isNotEmpty()) "${list.size}콜" else " ", 11f, white).apply { gravity = Gravity.CENTER })
-                cell.addView(text(if (list.isNotEmpty()) won(list.sumOf { it.net }) else " ", 11f, blue).apply { gravity = Gravity.CENTER })
+                cell.addView(text(if (list.isNotEmpty()) won(list.sumOf { it.net } - dayFix(list)) else " ", 11f, blue).apply { gravity = Gravity.CENTER })
                 cell.setOnClickListener { day = c2; go(Screen.DAY) }
             }
             rowView.addView(cell, LinearLayout.LayoutParams(0, dp(84), 1f))
@@ -672,7 +681,7 @@ class MainActivity : Activity() {
             val dow = Calendar.getInstance().apply { timeInMillis = t0 - dayStartHour * 3600_000L }.get(Calendar.DAY_OF_WEEK)
             root.addView(card().apply {
                 setOnClickListener { day = Calendar.getInstance().apply { timeInMillis = t0 - dayStartHour * 3600_000L }; go(Screen.DAY) }
-                addView(summaryBlock(dFmt.format(Date(t0 - dayStartHour * 3600_000L)), list, titleColor = if (dow == 1) red else if (dow == 7) blue else white))
+                addView(summaryBlock(dFmt.format(Date(t0 - dayStartHour * 3600_000L)), list, titleColor = if (dow == 1) red else if (dow == 7) blue else white, fixed = dayFix(list)))
             })
         }
     }
@@ -751,7 +760,7 @@ class MainActivity : Activity() {
         val done = Store.trips(this).filter { it.confirmed && dayKey(it.time) == today }
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(12), dp(16), dp(14))
-        footer.addView(summaryBlock("일일 합계", done))
+        footer.addView(summaryBlock("일일 합계", done, fixed = dayFix(done)))
     }
 
     // ---------------- 하루 기록 ----------------
@@ -787,7 +796,7 @@ class MainActivity : Activity() {
         root.addView(button("🗑 휴지통 (${Store.trash(this).size})", innerBg) { trashBack = Screen.DAY; go(Screen.TRASH) })
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
-        footer.addView(summaryBlock("일일 합계", list))
+        footer.addView(summaryBlock("일일 합계", list, fixed = dayFix(list)))
     }
 
     // ---------------- 삭제된 기록 (30일 보관, 되살리기) ----------------
@@ -1108,11 +1117,28 @@ class MainActivity : Activity() {
             addView(space(12))
             addView(text("하루가 바뀌는 시각", 16f, white, bold = true))
             addView(text("이 시각 전까지는 전날 운행으로 계산해요 (목표·오늘 합계·운행일지)", 12f, grey))
-            addView(row(listOf(0, 4, 5, 6, 7).map { h ->
-                button(if (h == 0) "자정" else "${h}시", if (dayStartHour == h) blue else innerBg) {
-                    dayStartHour = h; toast(if (h == 0) "자정에 하루가 바뀌어요" else "새벽 ${h}시에 하루가 바뀌어요"); render()
-                }
-            }))
+            // 00시 ~ 23시, 1시간 단위 (한 줄에 6개씩 4줄)
+            for (r in 0 until 4) addView(row((r * 6 until r * 6 + 6).map { h ->
+                button("%02d시".format(h), if (dayStartHour == h) blue else innerBg) {
+                    dayStartHour = h; toast("%02d시에 하루가 바뀌어요".format(h)); render()
+                }.apply { textSize = 14f; minHeight = dp(46); minimumHeight = dp(46); minWidth = 0; minimumWidth = 0; setPadding(0, 0, 0, 0) }
+            }).apply { for (i in 0 until childCount) (getChildAt(i).layoutParams as LinearLayout.LayoutParams).apply { if (i > 0) leftMargin = dp(6) } })
+        })
+
+        root.addView(card().apply {
+            addView(text("고정비", 16f, white, bold = true))
+            addView(text("월고정비: 보험료·통신비처럼 한 달에 한 번 나가는 돈 → 운행일지 월 합계 지출에 들어가요\n일고정비: 프로그램 일비처럼 운행한 날마다 나가는 돈 → 그날 합계 지출에 들어가요", 12f, grey))
+            fun money(v: Int) = edit("0").apply { inputType = InputType.TYPE_CLASS_NUMBER; if (v > 0) setText(v.toString()) }
+            val mf = money(monthFixed); val df = money(dayFixed)
+            addView(row(listOf(
+                LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(text("월고정비 (원)", 13f, grey)); addView(mf) },
+                LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; addView(text("일고정비 (원)", 13f, grey)); addView(df) },
+            )))
+            addView(button("고정비 저장", blue) {
+                monthFixed = mf.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0
+                dayFixed = df.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0
+                toast("월 ${won(monthFixed)}원 · 일 ${won(dayFixed)}원 저장했어요"); render()
+            })
         })
 
         root.addView(card().apply {
@@ -1408,7 +1434,13 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun summaryBlock(title: String, list: List<Store.Trip>, titleColor: Int = white) = LinearLayout(this).apply {
+    /** 운행한 날이면 일고정비 */
+    private fun dayFix(list: List<Store.Trip>) = if (list.isNotEmpty()) dayFixed else 0
+
+    private fun fixedNote(fixed: Int, label: String): View? =
+        if (fixed <= 0) null else text("지출에 $label ${won(fixed)}원 포함", 12f, grey).apply { setPadding(0, dp(4), 0, 0) }
+
+    private fun summaryBlock(title: String, list: List<Store.Trip>, titleColor: Int = white, fixed: Int = 0, fixedLabel: String = "일고정비") = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -1417,7 +1449,8 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(10) }
             })
         })
-        addView(totalsRow(list.sumOf { it.income }, list.sumOf { it.expense }))
+        addView(totalsRow(list.sumOf { it.income }, list.sumOf { it.expense } + fixed))
+        fixedNote(fixed, fixedLabel)?.let { addView(it) }
     }
 
     private fun confirm(msg: String, onYes: () -> Unit) {

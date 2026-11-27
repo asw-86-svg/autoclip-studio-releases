@@ -332,6 +332,16 @@ object Store {
         get() = p(this).getInt("dayStartHour", 6)
         set(v) = p(this).edit().putInt("dayStartHour", v).apply()
 
+    /** 월고정비: 보험료·통신비처럼 한 달에 한 번 나가는 돈 (월 합계 지출에 더함) */
+    var Context.monthFixed: Int
+        get() = p(this).getInt("monthFixed", 0)
+        set(v) = p(this).edit().putInt("monthFixed", v.coerceAtLeast(0)).apply()
+
+    /** 일고정비: 프로그램 일비처럼 운행한 날마다 나가는 돈 (그날 합계 지출에 더함) */
+    var Context.dayFixed: Int
+        get() = p(this).getInt("dayFixed", 0)
+        set(v) = p(this).edit().putInt("dayFixed", v.coerceAtLeast(0)).apply()
+
     /** 수락한 콜을 바로 운행일지에 넣을지 (기본 켜짐). 끄면 자동운행기록에서 [일지에 추가]로 넣는다 */
     var Context.autoToLog: Boolean
         get() = p(this).getBoolean("autoToLog", true)

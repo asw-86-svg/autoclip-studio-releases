@@ -28,6 +28,7 @@ class ScreenshotTest {
     private fun seed() {
         val ctx = RuntimeEnvironment.getApplication()
         val now = System.currentTimeMillis()
+        with(Store) { ctx.monthFixed = 300000; ctx.dayFixed = 10000; ctx.dayStartHour = 6 }
         Store.upsertTrip(ctx, Store.Trip(
             id = 1L, time = now, origin = "인계동 포포인츠 바이 쉐라톤 수원", dest = "경기 수원 영통구 망포동 힐스테이트영통아파트",
             program = "카카오대리", fare = 16800, commission = 3360, callKey = "k1",
@@ -74,5 +75,6 @@ class ScreenshotTest {
     @Test fun calls() = shot("calls", "calls")
     @Test fun auto() = shot("auto", "auto", 2600)
     @Test fun trash() = shot("trash", "trash")
-    @Test fun settings() = shot("settings", "settings", 3000)
+    @Test fun settings() = shot("settings", "settings", 4600)
+    @Test fun log() = shot("log", "log")
 }
