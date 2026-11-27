@@ -165,10 +165,16 @@ object CallParser {
     private val UI_WORDS = setOf("닫기", "수락", "거절", "취소", "확인", "예약콜", "일반설정", "거리", "요금", "시간", "출발지", "도착지")
     private val FARE_K = Regex("""^(?:[가-힣]{0,3})\d+(?:\.\d+)?K$""", RegexOption.IGNORE_CASE)
 
+    // 주소가 아닌 줄(결제·정산·메뉴 글자)에 자주 나오는 말
+    private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과")
+    private val MONEY = Regex("""\d{1,3}(,\d{3})+""")
+
     private fun isAddrLike(l: String): Boolean {
         val t = l.trim()
         if (norm(t) in UI_WORDS) return false
         if (FARE_K.matches(norm(t))) return false
+        if ('|' in t || MONEY.containsMatchIn(t)) return false
+        if (NOT_ADDR.any { it in norm(t) }) return false
         return t.count { it in '가'..'힣' } >= 3 && t.length >= 4
     }
 

@@ -197,6 +197,11 @@ class CallParserTest {
         assertTrue(c == null)
     }
 
+    @Test fun 결제정보는_주소가_아님() {
+        val c = CallParser.parse(listOf("콜 수락", "카드 | 확정 | 20,000P", "콜받도착", "실제수익", "닫기", "수락"), "카카오T 대리", allowFreeText = false)
+        assertTrue(c == null)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

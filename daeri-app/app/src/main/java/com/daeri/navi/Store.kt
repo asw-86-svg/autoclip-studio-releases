@@ -8,7 +8,7 @@ import kotlin.math.abs
 /** 현재 콜, 받은 콜 목록, 운행일지, 설정값을 휴대폰 안에만 저장한다. */
 object Store {
     private const val PREFS = "daeri"
-    private const val MAX_CALLS = 100
+    private const val CALLS_FILE = "calls.json"
     private const val MAX_DUMPS = 10
 
     private fun p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -19,19 +19,46 @@ object Store {
 
     fun setCurrent(ctx: Context, c: CallInfo?) {
         if (c == null) { p(ctx).edit().remove("current").apply(); return }
-        val hist = history(ctx).filter { it.key != c.key }.toMutableList()
-        hist.add(0, c)
-        val arr = JSONArray().apply { hist.take(MAX_CALLS).forEach { put(toJson(it, trimNotes = true)) } }
-        p(ctx).edit().putString("current", toJson(c).toString()).putString("history", arr.toString()).apply()
+        p(ctx).edit().putString("current", toJson(c).toString()).apply()
+        // 받은 콜 목록: 개수 제한 없음 (목록삭제 전까지 전부 보관)
+        writeHistory(ctx, listOf(c) + history(ctx).filter { it.key != c.key })
         if (c.accepted) recordAccepted(ctx, c)
     }
 
-    fun history(ctx: Context): List<CallInfo> = runCatching {
-        val arr = JSONArray(p(ctx).getString("history", "[]"))
-        (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
-    }.getOrDefault(emptyList())
+    // 받은 콜 목록은 콜이 많이 쌓여도 느려지지 않게 별도 파일 + 메모리 캐시
+    private val histLock = Any()
+    @Volatile private var histCache: List<CallInfo>? = null
+    private fun callsFile(ctx: Context) = java.io.File(ctx.filesDir, CALLS_FILE)
 
-    fun clearHistory(ctx: Context) = p(ctx).edit().remove("history").apply()
+    fun history(ctx: Context): List<CallInfo> = synchronized(histLock) {
+        histCache?.let { return it }
+        val f = callsFile(ctx)
+        val legacy = !f.exists() && p(ctx).contains("history")   // 예전 버전 저장분 옮기기
+        val text = when {
+            f.exists() -> runCatching { f.readText() }.getOrDefault("[]")
+            legacy -> p(ctx).getString("history", "[]").orEmpty()
+            else -> "[]"
+        }
+        val list = runCatching {
+            val arr = JSONArray(text)
+            (0 until arr.length()).map { fromJson(arr.getJSONObject(it)) }
+        }.getOrDefault(emptyList())
+        histCache = list
+        if (legacy) { writeHistory(ctx, list); p(ctx).edit().remove("history").apply() }
+        list
+    }
+
+    private fun writeHistory(ctx: Context, list: List<CallInfo>) = synchronized(histLock) {
+        histCache = list
+        val arr = JSONArray().apply { list.forEach { put(toJson(it, trimNotes = true)) } }
+        runCatching {
+            val tmp = java.io.File(ctx.filesDir, "$CALLS_FILE.tmp")
+            tmp.writeText(arr.toString())
+            if (!tmp.renameTo(callsFile(ctx))) callsFile(ctx).writeText(arr.toString())
+        }
+    }
+
+    fun clearHistory(ctx: Context) = writeHistory(ctx, emptyList())
 
     // ---------------- 운행일지 ----------------
     data class Trip(
@@ -85,10 +112,7 @@ object Store {
             "anthropic" in src.lowercase() || "claude" in src.lowercase()
         val hist = history(ctx)
         val keepHist = hist.filterNot { bad(it.source) }
-        if (keepHist.size != hist.size) {
-            val arr = JSONArray().apply { keepHist.forEach { put(toJson(it, trimNotes = true)) } }
-            p(ctx).edit().putString("history", arr.toString()).apply()
-        }
+        if (keepHist.size != hist.size) writeHistory(ctx, keepHist)
         val tr = trips(ctx)
         val keepTrips = tr.filterNot { bad(it.memo) }
         if (keepTrips.size != tr.size) saveTrips(ctx, keepTrips)

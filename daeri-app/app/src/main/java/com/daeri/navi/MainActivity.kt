@@ -59,6 +59,7 @@ class MainActivity : Activity() {
     private var logListMode = false
     private var day: Calendar = Calendar.getInstance()
     private var showDump = false
+    private var callsShown = 50
     private var askedLocation = false
 
     private val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
@@ -221,7 +222,7 @@ class MainActivity : Activity() {
         // 메뉴
         val todayCalls = Store.history(this).count { dayKey(it.capturedAt) == today }
         root.addView(card(pad = 0).apply {
-            addView(menuItem("📋", "받은 콜 목록", if (todayCalls > 0) "$todayCalls" else null) { go(Screen.CALLS) })
+            addView(menuItem("📋", "받은 콜 목록", if (todayCalls > 0) "$todayCalls" else null) { callsShown = 50; go(Screen.CALLS) })
             addView(divider())
             addView(menuItem("📅", "운행일지", null) { logMonth = Calendar.getInstance(); go(Screen.LOG) })
             addView(divider())
@@ -311,16 +312,16 @@ class MainActivity : Activity() {
 
     // ---------------- 받은 콜 목록 ----------------
     private fun renderCalls() {
-        setTop("받은 콜 목록", true, "목록삭제") {
-            confirm("받은 콜 목록을 모두 지울까요?\n(운행일지는 지워지지 않아요)") { Store.clearHistory(this); render() }
-        }
         val hist = Store.history(this)
+        setTop("받은 콜 목록" + if (hist.isNotEmpty()) " (${hist.size})" else "", true, "목록삭제") {
+            confirm("받은 콜 목록 ${hist.size}개를 모두 지울까요?\n(운행일지는 지워지지 않아요)") { Store.clearHistory(this); render() }
+        }
         if (hist.isEmpty()) {
             root.addView(card().apply { addView(text("아직 받은 콜이 없어요.", 15f, grey)) })
             return
         }
-        val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.KOREA)
-        hist.take(50).forEach { h ->
+        val fmt = SimpleDateFormat("MM-dd HH:mm", Locale.KOREA)
+        hist.take(callsShown).forEach { h ->
             root.addView(card().apply {
                 setOnClickListener { openCall(h) }
                 addView(LinearLayout(this@MainActivity).apply {
@@ -331,9 +332,10 @@ class MainActivity : Activity() {
                         addView(text(h.source, 18f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                         addView(LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                            addView(text(fmt.format(Date(h.capturedAt)), 14f, grey))
+                            addView(text(fmt.format(Date(h.capturedAt)), 14f, grey).apply { maxLines = 1 })
                             if (!h.accepted) addView(badge("수락 전", innerBg, grey).apply {
-                                textSize = 11f
+                                textSize = 11f; maxLines = 1
+                                setPadding(dp(8), dp(2), dp(8), dp(2))
                                 layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
                             })
                         })
@@ -341,7 +343,7 @@ class MainActivity : Activity() {
                     if (h.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.END
                         addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
-                        addView(text(CallParser.won(h.fare).takeIf { it > 0 }?.let { won(it) } ?: h.fare, 24f, blue, bold = true))
+                        addView(text(CallParser.won(h.fare).takeIf { it > 0 }?.let { won(it) } ?: h.fare, 22f, blue, bold = true).apply { maxLines = 1 })
                     })
                 })
                 addView(space(10))
@@ -358,6 +360,10 @@ class MainActivity : Activity() {
                     }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(8) })
                 })
             })
+        }
+        // 한꺼번에 다 그리면 버벅이므로 50개씩 더 보기
+        if (hist.size > callsShown) {
+            root.addView(button("더 보기 (${hist.size - callsShown}개 남음)", innerBg) { callsShown += 50; render() })
         }
     }
 
