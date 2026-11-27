@@ -165,6 +165,17 @@ class CallParserTest {
         assertNotNull(CallParser.parse(chat, "x", allowFreeText = true))
     }
 
+    @Test fun 로지_자동취소_실제글자() {
+        val c = CallParser.parse(listOf("9", "초 후 자동취소", "출발지",
+            "탁송)ⓓ탁/18:30출/당진운곡로197-8.101동\n상세:충남 당진시 채운동 1125-0 운곡로 197-8\n금액: 60000원",
+            "도착지", "인천 연수구 옥련동)톨포]인천송도유원지", "TextView", "TextView", "추가\n정보",
+            "상세정보보기", "배차취소", "퀵서치\n중지"), "로지", allowFreeText = false)!!
+        assertEquals("충남 당진시 운곡로 197-8", c.originQueries.first())
+        assertTrue(c.destQueries.first(), c.destQueries.first().endsWith("인천송도유원지"))
+        assertTrue(c.destQueries.none { "톨포" in it })
+        assertEquals("60000원", c.fare)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

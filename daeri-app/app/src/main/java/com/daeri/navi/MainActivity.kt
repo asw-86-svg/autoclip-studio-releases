@@ -599,6 +599,7 @@ class MainActivity : Activity() {
 
         root.addView(card().apply {
             addView(text("🛠 주소가 이상하거나 콜을 못 읽을 때", 16f, white, bold = true))
+            addView(text("마지막 읽기 결과: " + Store.status(this@MainActivity).ifEmpty { "(아직 없음)" }, 13f, 0xFF7FB2FF.toInt()))
             addView(text("대리 앱 화면에서 읽은 글자(최근 10개)를 복사해서 보내주세요.", 13f, grey))
             val all = Store.dumps(this@MainActivity).joinToString("\n\n") { (app, at, body) ->
                 "[$app ${SimpleDateFormat("HH:mm:ss", Locale.KOREA).format(Date(at))}]\n$body"

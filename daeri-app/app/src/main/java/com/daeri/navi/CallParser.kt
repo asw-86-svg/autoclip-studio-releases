@@ -283,7 +283,9 @@ object CallParser {
             .joinToString(" ")
         // "(성동구)+옥수동…" → "성동구)옥수동…"  (뒤에서 '지역)본문' 형식으로 처리됨)
         s = s.replace(Regex("""^\s*\(([^)]+)\)\s*\+?\s*"""), "$1)")
-        s = s.replace(Regex("""[@~$+*]"""), " ")
+        s = s.replace(Regex("""[\uFE0E\uFE0F]"""), "")   // 이모지 꾸밈 문자
+        s = s.replace(Regex("""[\[\]]"""), "/")           // "톨포]인천송도유원지" → 조각으로 나눠 '톨포' 제거
+        s = s.replace(Regex("""[@~$+*●★☆◎♨▶◀]"""), " ")
         // "화성장안면.수정로" 처럼 점으로 이어진 부분
         s = s.replace(Regex("""(?<=[가-힣0-9])\.(?=[가-힣])"""), " ")
         s = s.replace(Regex("""\s+"""), " ").trim()

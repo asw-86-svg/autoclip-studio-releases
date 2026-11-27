@@ -116,8 +116,15 @@ class CallReaderService : AccessibilityService() {
         }
     }
 
+    private val hm = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.KOREA)
+    private fun status(msg: String) = Store.setStatus(this, "${hm.format(java.util.Date())} $msg")
+
     /** 뒤쪽 스레드에서 실행 */
     private fun scan() {
+        try { scanInner() } catch (e: Throwable) { status("⚠️ 읽기 오류: ${e.javaClass.simpleName} ${e.message.orEmpty().take(80)}") }
+    }
+
+    private fun scanInner() {
         // 지금 화면 + 다른 앱 위에 떠 있는 팝업 창까지 모두 읽는다
         val roots = LinkedHashMap<Int, AccessibilityNodeInfo>()
         runCatching { rootInActiveWindow?.let { roots[it.windowId] = it } }
@@ -134,16 +141,45 @@ class CallReaderService : AccessibilityService() {
             if (!looks) continue
             val call = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
             if (call.originRaw.isBlank() && call.destRaw.isBlank()) continue
-            if (call.key == Store.current(this)?.key) return
+            if (call.key == Store.current(this)?.key) {
+                // 같은 콜: 말풍선이 숨겨져 있으면 다시 띄운다
+                handler.post { if (bubble == null) { showBubble(); bubbleEta(call) } }
+                return
+            }
             Store.setCurrent(this, call)
-            handler.post { showBubble(); pulse(); bubbleEta(call) }
+            status("✅ ${appName(pkg)} 콜 읽음: ${call.originDisplay} → ${call.destDisplay}")
+            handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call) }
             return
         }
     }
 
+    /** 새 콜이 잡히면 이 시각까지 말풍선을 크게 펼쳐 출발지·도착지까지 보여준다 */
+    private var expandedUntil = 0L
+    private var timeLines: List<String> = emptyList()
+    private var bubbleCall: CallInfo? = null
+
+    private fun renderBubble() {
+        val c = bubbleCall ?: return
+        val b = bubble ?: return
+        val expanded = System.currentTimeMillis() < expandedUntil
+        val lines = ArrayList<String>()
+        if (expanded) {
+            lines += "🔵 " + c.originDisplay.take(16)
+            lines += "🔴 " + c.destDisplay.take(16)
+        }
+        lines += timeLines.ifEmpty { if (expanded) listOf("시간 계산 중…") else listOf("출/도") }
+        b.text = lines.joinToString("\n")
+        b.textSize = if (expanded) 15f else 14f
+    }
+
     /** 말풍선: "출 - 🚶12분"(걸어서 20분 넘으면 🚌) / "출 → 도 🚗55분" */
     fun bubbleEta(call: CallInfo) {
-        bubble?.text = "출/도"
+        bubbleCall = call
+        timeLines = emptyList()
+        renderBubble()
+        if (expandedUntil > System.currentTimeMillis()) {
+            handler.postDelayed({ renderBubble() }, expandedUntil - System.currentTimeMillis() + 50)
+        }
         Loc.current(this) { here ->
             bg.post {
                 val o = Geo.resolve(this, call.originQueries)
@@ -153,10 +189,11 @@ class CallReaderService : AccessibilityService() {
                     val t = Route.toOrigin(Route.straightKm(here, o))
                     val min = (t.sec + 59) / 60
                     lines += "출 - " + if (t.walk) "🚶${min}분" else "🚌약${min}분"
-                }
-                if (o != null && d != null) lines += "출 → 도 🚗${shortDur(Route.drive(this, o, d).sec)}"
-                if (lines.isNotEmpty()) handler.post {
-                    if (Store.current(this)?.key == call.key) bubble?.text = lines.joinToString("\n")
+                } else if (o == null) lines += "출 - 위치 못 찾음"
+                else lines += "출 - 내 위치 모름"
+                lines += if (o != null && d != null) "출 → 도 🚗${shortDur(Route.drive(this, o, d).sec)}" else "출 → 도 ${if (d == null) "도착지 못 찾음" else "-"}"
+                handler.post {
+                    if (Store.current(this)?.key == call.key) { timeLines = lines; renderBubble() }
                 }
             }
         }

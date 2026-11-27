@@ -127,6 +127,10 @@ object Store {
         (0 until arr.length()).map { arr.getJSONObject(it).let { o -> Triple(o.optString("app"), o.optLong("at"), o.optString("body")) } }
     }.getOrDefault(emptyList())
 
+    /** 마지막 읽기 결과 (문제 해결용) */
+    fun setStatus(ctx: Context, msg: String) = p(ctx).edit().putString("status", msg).apply()
+    fun status(ctx: Context): String = p(ctx).getString("status", "").orEmpty()
+
     fun bubblePos(ctx: Context): Pair<Int, Int> = p(ctx).getInt("bx", 0) to p(ctx).getInt("by", 400)
     fun setBubblePos(ctx: Context, x: Int, y: Int) = p(ctx).edit().putInt("bx", x).putInt("by", y).apply()
 
