@@ -138,18 +138,34 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        when (screen) {
-            Screen.HOME -> super.onBackPressed()
-            Screen.DAY -> go(dayBack)
-            Screen.EDIT -> go(editBack)
-            Screen.TRASH -> go(trashBack)
+        when {
+            backStack.isNotEmpty() -> go(backStack.last())
+            screen == Screen.HOME -> super.onBackPressed()
             else -> go(Screen.HOME)
         }
     }
 
-    private fun go(s: Screen) { screen = s; render() }
+    /** 지나온 화면들 (뒤로 가기 = 바로 전 화면) */
+    private val backStack = ArrayList<Screen>()
+    /** 화면별로 보던 스크롤 위치 — 뒤로 돌아오면 그 자리로 */
+    private val scrollPos = HashMap<Screen, Int>()
+    private var restoreScroll: Int? = null
+
+    private fun go(s: Screen) {
+        if (s == screen) { render(); return }
+        scrollPos[screen] = scroll.scrollY
+        val idx = backStack.lastIndexOf(s)
+        when {
+            s == Screen.HOME -> { backStack.clear(); restoreScroll = scrollPos[s] }
+            idx >= 0 -> { while (backStack.size > idx) backStack.removeAt(backStack.size - 1); restoreScroll = scrollPos[s] }  // 되돌아감
+            else -> { backStack.add(screen); restoreScroll = null }                                                    // 새로 들어감
+        }
+        screen = s; render()
+    }
 
     private fun handleIntent(i: Intent?) {
+        // 알림·말풍선·공유로 바로 열린 화면은 그 전 기록을 버린다 (뒤로 = 홈)
+        if (i?.getStringExtra("open") != null || i?.action == Intent.ACTION_SEND) backStack.clear()
         when (i?.getStringExtra("open")) {
             "auto" -> screen = Screen.AUTO
             "call" -> screen = Screen.CALL
@@ -199,7 +215,7 @@ class MainActivity : Activity() {
             Screen.PASTE -> renderPaste()
             Screen.SETTINGS -> renderSettings()
         }
-        if (lastScreen != screen) scroll.post { scroll.scrollTo(0, 0) }
+        if (lastScreen != screen) { val y = restoreScroll ?: 0; restoreScroll = null; scroll.post { scroll.scrollTo(0, y) } }
         lastScreen = screen
     }
 
@@ -542,11 +558,25 @@ class MainActivity : Activity() {
     private fun addrRow(addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(4), 0, 0)
-        // 주소는 한 줄로 — 길면 글씨가 자동으로 작아진다 (18 → 12)
-        addView(text(addr, 18f, white, bold = true).apply {
-            maxLines = 1; gravity = Gravity.CENTER_VERTICAL
-            setAutoSizeTextTypeUniformWithConfiguration(12, 18, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
-        }, LinearLayout.LayoutParams(0, dp(30), 1f))
+        // 주소는 되도록 한 줄 — 길면 글씨를 18 → 13까지 줄이고, 그래도 길면 두 줄로 (뒷부분이 잘려 안 보이는 일 없게)
+        // 두 줄이 될 때 "매송고\n색로"처럼 낱말 중간에서 끊기지 않게 글자 사이에 '줄 안 바꿈'(U+2060)
+        val keepWords = addr.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }
+        addView(text(keepWords, 18f, white, bold = true).apply {
+            maxLines = 2; gravity = Gravity.CENTER_VERTICAL
+            post {
+                val w = width - paddingLeft - paddingRight
+                if (w <= 0) return@post
+                var sp = 18f
+                val pnt = android.text.TextPaint(paint)
+                while (sp > 13f) {
+                    pnt.textSize = sp * resources.displayMetrics.scaledDensity
+                    if (pnt.measureText(addr) <= w) break
+                    sp -= 1f
+                }
+                pnt.textSize = sp * resources.displayMetrics.scaledDensity
+                textSize = if (pnt.measureText(addr) <= w) sp else 16f
+            }
+        }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
         // 오른쪽: [⌖][카카오][네이버] 붙여서 한 덩어리
         addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
