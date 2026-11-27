@@ -70,6 +70,8 @@ class MainActivity : Activity() {
     private var logListMode = false
     private var hourOpen = false
     private var reportPreview = false
+    /** 콜 상세 지도 (⊙ 버튼으로 출발/도착 확대) */
+    private var callWeb: android.webkit.WebView? = null
     private var day: Calendar = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -6) }
     private var showDump = false
     private var callsShown = 50
@@ -513,7 +515,7 @@ class MainActivity : Activity() {
             // 출발지 → 대중교통 길안내
             addView(space(14))
             addView(text(dot(blue, "●  출발지"), 14f, blue, bold = true))
-            addView(text(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, 21f, white, bold = true))
+            addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
             addView(row(listOf(
                 button("🚌 카카오맵", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
                 button("🚌 네이버지도", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
@@ -526,7 +528,7 @@ class MainActivity : Activity() {
 
             // 도착지 + 출발→도착 경로 (자동차)
             addView(text(dot(red, "●  도착지"), 14f, red, bold = true))
-            addView(text(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, 21f, white, bold = true))
+            addView(addrRow(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red) { callWeb?.evaluateJavascript("focusPoint('d')", null) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
@@ -542,10 +544,23 @@ class MainActivity : Activity() {
         })
     }
 
+    /** 주소 + 오른쪽 ⊙ 버튼 (누르면 지도에서 그 위치로 확대) */
+    private fun addrRow(addr: String, color: Int, onFocus: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        addView(text(addr, 21f, white, bold = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        addView(TextView(this@MainActivity).apply {
+            text = "⌖"; textSize = 30f; setTextColor(color); gravity = Gravity.CENTER
+            background = rounded(innerBg, 12)
+            setOnClickListener { onFocus() }
+            contentDescription = "지도에서 보기"
+        }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { leftMargin = dp(10) })
+    }
+
     /** 앱 안의 작은 지도 (Leaflet + 무료 지도). 출발·도착 위치를 찾으면 핀을 찍는다 */
     @android.annotation.SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun mapView(c: CallInfo): View {
         val web = android.webkit.WebView(this)
+        callWeb = web
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.setBackgroundColor(0xFF1E1E21.toInt())
@@ -586,7 +601,8 @@ class MainActivity : Activity() {
             fun js(p: Geo.Pt?) = if (p == null) "null,null" else "${p.lat},${p.lng}"
             // 못 찾았으면 이유(카카오 키 오류 등)를 지도에 글자로
             val why = if (o == null || d == null) Geo.lastError.replace("\\", "").replace("'", "") else ""
-            val call = "setPoints(${js(o)},${js(d)},'$why');"
+            fun q(t: String) = "'" + t.replace("\\", "").replace("'", "").replace("\n", " ") + "'"
+            val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })});"
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 if (loaded) web.evaluateJavascript(call, null) else pending = call

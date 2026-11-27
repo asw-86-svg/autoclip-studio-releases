@@ -43,7 +43,7 @@ class ScreenshotTest {
 
     private fun shot(name: String, open: String, h: Int = 2340, extra: (Intent) -> Unit = {}) {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
-        seed()
+        if (name != "call_kakao") seed()
         val intent = Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java).putExtra("open", open)
         extra(intent)
         val act = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
@@ -71,12 +71,21 @@ class ScreenshotTest {
     @Test fun newEditor() = shot("editor_new", "edit", 3900)
     @Test fun day() = shot("day", "day")
     @Test fun home() = shot("home", "home")
-    @Test fun call() = shot("call", "call")
+    @Test fun call() = shot("call", "call", 2700)
     @Test fun calls() = shot("calls", "calls")
     @Test fun auto() = shot("auto", "auto", 2600)
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 4600)
     @Test fun log() = shot("log", "log")
+    /** 지도 미리보기용: 실제로 받았던 카카오 콜 */
+    @Test fun callKakao() {
+        assumeTrue(System.getenv("SCREENSHOTS") == "1")
+        seed()
+        val ctx = RuntimeEnvironment.getApplication()
+        Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
+            listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
+        shot("call_kakao", "call", 2700)
+    }
     @Test fun homeAd() {
         Ads.setJson(RuntimeEnvironment.getApplication(), """{"ads":[{"id":"t1","title":"○○ 대리기사 보험","text":"하루 3,000원부터 · 24시간 상담","link":"tel:01000000000","button":"📞 전화"}]}""")
         shot("home_ad", "home", 4400)
