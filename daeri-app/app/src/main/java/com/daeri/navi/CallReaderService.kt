@@ -87,7 +87,14 @@ class CallReaderService : AccessibilityService() {
         for (i in 0 until node.childCount) collect(node.getChild(i), out, depth + 1)
     }
 
-    private fun appName(pkg: String): String = runCatching {
+    private fun appName(pkg: String): String = when {
+        "callmaner" in pkg -> "콜마너"
+        "logi" in pkg -> "로지"
+        "kakao" in pkg -> "카카오T 대리"
+        else -> appLabel(pkg)
+    }
+
+    private fun appLabel(pkg: String): String = runCatching {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     }.getOrDefault(pkg)
 

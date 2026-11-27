@@ -315,6 +315,7 @@ class MainActivity : Activity() {
 
     private fun row(vararg views: View) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
+        isBaselineAligned = false
         views.forEachIndexed { i, v ->
             v.layoutParams = LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply {
                 topMargin = dp(6); if (i > 0) leftMargin = dp(8)

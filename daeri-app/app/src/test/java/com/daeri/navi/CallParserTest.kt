@@ -88,6 +88,34 @@ class CallParserTest {
         )) println("$r\n   => " + CallParser.candidates(r))
     }
 
+    @Test fun 콜마너_수락팝업() {
+        val c = CallParser.parse(screen(
+            "위치 : 수청동 당진버스터미널  잔액 : 21,600원", "거리", "30km", "일반 설정",
+            "거리", "요금", "시간", "출발지", "도착지",
+            "17", "복합75K", "후불)5천후불/\$평택카길애그리퓨리나공장", "1:45", "(성동구)+옥수동한남하이츠@/톨포~~",
+            "28", "후불25K", "1톤탑/화성장안면.수정로215-10", "25분", "(화성시만세구)현대자동차 팔탄서비스/톨포",
+            "17", "1:45", "복합75K", "후불)5천후불/\$평택카길애그리퓨리나공장", "(성동구)+옥수동한남하이츠@/톨포~~",
+            "닫기", "수락", "예약콜",
+        ))!!
+        assertEquals("후불)5천후불/\$평택카길애그리퓨리나공장", c.originRaw)
+        assertEquals("평택카길애그리퓨리나공장", c.originQueries.first())
+        assertEquals("성동구 옥수동 한남하이츠", c.destQueries.first())
+        assertEquals("복합75K", c.fare)
+    }
+
+    @Test fun 콜목록만_있으면_무시() {
+        val c = CallParser.parse(screen(
+            "거리", "요금", "시간", "출발지", "도착지",
+            "17", "복합75K", "후불)5천후불/평택공장", "1:45", "(성동구)+옥수동한남하이츠@/톨포~~",
+        ))
+        assertTrue(c == null || (c.originRaw.isBlank() && c.destRaw.isBlank()))
+    }
+
+    @Test fun 목록주소_정리() {
+        assertEquals("화성 장안면 수정로 215-10", CallParser.candidates("1톤탑/화성장안면.수정로215-10").first())
+        assertEquals("화성시 만세구 현대자동차 팔탄서비스", CallParser.candidates("(화성시만세구)현대자동차 팔탄서비스/톨포").first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -46,7 +46,7 @@ object CallParser {
     fun looksLikeCall(joined: String): Boolean {
         val n = norm(joined)
         return ("출발지" in n && "도착지" in n) || "배정완료" in n ||
-            "출발주소" in n || "도착주소" in n
+            "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n)
     }
 
     fun parse(texts: List<String>, source: String = ""): CallInfo? {
@@ -54,6 +54,7 @@ object CallParser {
         if (lines.isEmpty()) return null
         return parseLabeled(lines, source)
             ?: parseKakao(lines, source)
+            ?: parseOffer(lines, source)
             ?: parseFreeText(lines.joinToString("\n"), source)
     }
 
@@ -64,6 +65,9 @@ object CallParser {
             val f = LABELS[norm(lines[i])] ?: continue
             val next = lines.getOrNull(i + 1) ?: continue
             if (LABELS.containsKey(norm(next))) continue // 값이 비어 있는 칸
+            // 콜 목록 제목줄("거리 요금 시간 출발지 도착지")을 콜로 착각하지 않도록 값 검사
+            if ((f == "origin" || f == "dest") && !isAddrLike(next)) continue
+            if (f == "fare" && next.none { it.isDigit() }) continue
             fields.putIfAbsent(f, next)
         }
         val summary = listOfNotNull(fields["summary"], fields["memo"]).joinToString("\n")
@@ -120,7 +124,39 @@ object CallParser {
         )
     }
 
-    // ---------- 3. 문자/카톡에서 붙여넣은 글 ----------
+    // ---------- 3. 콜 목록에서 콜을 눌렀을 때 뜨는 수락 팝업 (콜마너 등) ----------
+    private val UI_WORDS = setOf("닫기", "수락", "거절", "취소", "확인", "예약콜", "일반설정", "거리", "요금", "시간", "출발지", "도착지")
+    private val FARE_K = Regex("""^(?:[가-힣]{0,3})\d+(?:\.\d+)?K$""", RegexOption.IGNORE_CASE)
+
+    private fun isAddrLike(l: String): Boolean {
+        val t = l.trim()
+        if (norm(t) in UI_WORDS) return false
+        if (FARE_K.matches(norm(t))) return false
+        return t.count { it in '가'..'힣' } >= 3 && t.length >= 4
+    }
+
+    private fun parseOffer(lines: List<String>, source: String): CallInfo? {
+        val accept = lines.indexOfLast { norm(it) == "수락" }
+        if (accept < 0) return null
+        val close = lines.subList(0, accept).indexOfLast { norm(it) == "닫기" }
+        val end = if (close >= 0 && accept - close <= 3) close else accept
+        val addr = ArrayList<String>()
+        var fare = ""
+        var i = end - 1
+        while (i >= 0 && i >= end - 8) {
+            val l = lines[i].trim()
+            if (addr.size < 2 && isAddrLike(l)) addr.add(0, l)
+            else if (addr.size == 2 && fare.isEmpty() && FARE_K.matches(norm(l))) { fare = l; break }
+            i--
+        }
+        if (addr.size < 2) return null
+        return CallInfo(
+            source.ifEmpty { "콜 수락 화면" }, addr[0], addr[1],
+            candidates(addr[0]), candidates(addr[1]), fare,
+        )
+    }
+
+    // ---------- 4. 문자/카톡에서 붙여넣은 글 ----------
     private fun parseFreeText(text: String, source: String): CallInfo? {
         fun grab(vararg keys: String): String? {
             for (k in keys) {
@@ -154,7 +190,7 @@ object CallParser {
     // ---------- 주소 정리: 지도 검색에 쓸 후보를 좋은 순서대로 ----------
     fun candidates(raw: String): List<String> {
         val out = LinkedHashSet<String>()
-        val s = raw.replace('\n', ' ').replace(Regex("""\s+"""), " ").trim()
+        val s = preclean(raw)
         if (s.isEmpty()) return emptyList()
 
         val detailIdx = s.indexOf("상세")
@@ -209,18 +245,45 @@ object CallParser {
         return out.map { it.replace(Regex("""\s+"""), " ").trim() }.filter { it.length >= 2 }.distinct()
     }
 
+    private fun preclean(raw: String): String {
+        var s = raw.replace('\n', ' ')
+        // "(성동구)+옥수동…" → "성동구)옥수동…"  (뒤에서 '지역)본문' 형식으로 처리됨)
+        s = s.replace(Regex("""^\s*\(([^)]+)\)\s*\+?\s*"""), "$1)")
+        s = s.replace(Regex("""[@~$+*]"""), " ")
+        // "화성장안면.수정로" 처럼 점으로 이어진 부분
+        s = s.replace(Regex("""(?<=[가-힣0-9])\.(?=[가-힣])"""), " ")
+        s = s.replace(Regex("""\s+"""), " ").trim()
+        return Regex("""[가-힣]+""").replace(s) { splitGlued(it.value) }
+    }
+
+    /** "화성시만세구" → "화성시 만세구", "화성장안면" → "화성 장안면", "옥수동한남하이츠" → "옥수동 한남하이츠" */
+    private fun splitGlued(t: String): String {
+        Regex("""^([가-힣]{1,4}[시군])([가-힣]{1,4}[구읍면])$""").find(t)?.let { return "${it.groupValues[1]} ${it.groupValues[2]}" }
+        Regex("""^([가-힣]{2})([가-힣]{1,2}[읍면])$""").find(t)?.let { return "${it.groupValues[1]} ${it.groupValues[2]}" }
+        Regex("""^([가-힣]{1,3}동)([가-힣A-Za-z][가-힣A-Za-z0-9]+)$""").find(t)?.let {
+            if (!it.groupValues[1].endsWith("자동")) return "${it.groupValues[1]} ${it.groupValues[2]}"
+        }
+        return t
+    }
+
+    private val JUNK_SEG = Regex("""후불|선불|톨포|톨비|현금|카드|\d+톤|^급|요금|\d+천|\d+원|기사부담""")
+
     private fun stripPrefixes(s: String): String {
         // "탁송)13시출)수원도이치오토월드" → "수원도이치오토월드"
         var r = s.trim()
         while (true) {
             val m = Regex("""^[^)\s(]{1,8}\)""").find(r) ?: break
+            if (isRegionToken(m.value.dropLast(1))) break // "성동구)…" 의 지역명은 남김
             r = r.substring(m.range.last + 1).trim()
         }
         return r
     }
 
     private fun cutJunk(s: String): String =
-        s.split('/').first().split('(').first()
+        s.split('/').map { it.trim() }.let { segs ->
+            segs.firstOrNull { seg -> seg.isNotEmpty() && seg.any { it in '가'..'힣' } && !JUNK_SEG.containsMatchIn(seg) }
+                ?: segs.first()
+        }.split('(').first()
             .replace(Regex("""\s*\d+\s*동\s*$"""), "") // 아파트 동 번호
             .trim()
 
@@ -237,11 +300,19 @@ object CallParser {
         return t.joinToString(" ")
     }
 
-    private fun regionBefore(s: String, idx: Int): String =
-        s.substring(0, idx).trim().split(" ").filter { it.isNotEmpty() }
-            .takeLastWhile { isRegionToken(it) || it.endsWith("동") || it.endsWith("읍") || it.endsWith("면") }
-            .filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }
-            .joinToString(" ")
+    private fun regionBefore(s: String, idx: Int): String {
+        val toks = s.substring(0, idx).trim().split(" ").filter { it.isNotEmpty() }
+        val kept = ArrayList<String>()
+        for (t in toks.asReversed()) {
+            val ok = isRegionToken(t) || t.endsWith("동") || t.endsWith("읍") || t.endsWith("면") ||
+                // "수원 권선구", "화성 장안면" 처럼 '시'를 뺀 도시 이름
+                (t.length in 2..3 && t.all { it in '가'..'힣' } &&
+                    kept.firstOrNull()?.let { it.endsWith("구") || it.endsWith("군") || it.endsWith("읍") || it.endsWith("면") } == true)
+            if (!ok) break
+            kept.add(0, t)
+        }
+        return kept.filterNot { it.endsWith("동") || it.endsWith("가") || it.endsWith("리") }.joinToString(" ")
+    }
 
     private fun isRegionToken(t: String): Boolean =
         t in PROVINCES || t.endsWith("특별시") || t.endsWith("광역시") ||
