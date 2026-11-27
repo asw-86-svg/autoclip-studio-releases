@@ -202,6 +202,26 @@ class CallParserTest {
         assertTrue(c == null)
     }
 
+    @Test fun 카카오_콜카드() {
+        val lines = listOf("콜 대기", "콜 수요 지도", "리스트 설정",
+            "도착", "약 40분 운행", "출발", "도보 10.2km(약203분 )",
+            "출발", "지산동 클린히트복싱짐 지산점",
+            "도착", "♥", "경기 화성시 동탄구\n동탄순환대로3길 27-22", "약 40분 운행",
+            "실제\n수익", "카드 | 확정 | 22,400", "닫기", "수락")
+        assertTrue(CallParser.looksLikeCall(lines.joinToString("\n")))
+        val c = CallParser.parse(lines, "카카오T 대리", allowFreeText = false)!!
+        assertEquals("지산동 클린히트복싱짐 지산점", c.originRaw)
+        assertEquals("경기 화성시 동탄구 동탄순환대로3길 27-22", c.destQueries.first())
+        assertEquals(22400, CallParser.won(c.fare))
+        assertTrue(!c.accepted)
+    }
+
+    @Test fun 카카오_콜카드_하트가_한칸() {
+        val c = CallParser.parse(listOf("출발", "지산동 클린히트복싱짐 지산점", "도착", "♥ 경기 화성시 동탄구 동탄순환대로3길 27-22\n약 40분 운행",
+            "실제수익", "카드 | 확정 | 22,400", "닫기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals("경기 화성시 동탄구 동탄순환대로3길 27-22", c.destQueries.first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

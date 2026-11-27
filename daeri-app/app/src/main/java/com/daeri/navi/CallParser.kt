@@ -36,6 +36,8 @@ object CallParser {
         "발주사이용개시번호" to "x", "이용개시번호" to "x", "발주사" to "x",
         // I-Driver 콜 팝업: 출발 / 도착 / 요금 / 기타
         "출발" to "origin", "도착" to "dest", "기타" to "memo",
+        // 카카오T 대리 콜카드: 출발 / 도착 / 실제 수익
+        "실제수익" to "fare",
     )
 
     private val PROVINCES = setOf(
@@ -91,7 +93,9 @@ object CallParser {
         val fields = HashMap<String, String>()
         for (i in lines.indices) {
             val f = LABELS[norm(lines[i])] ?: continue
-            val next = lines.getOrNull(i + 1) ?: continue
+            var next = lines.getOrNull(i + 1) ?: continue
+            // "♥" 같은 아이콘이 따로 한 칸이면 그 다음 줄을 값으로
+            if (next.none { it in '가'..'힣' || it.isDigit() }) next = lines.getOrNull(i + 2) ?: continue
             if (LABELS.containsKey(norm(next))) continue // 값이 비어 있는 칸
             // 콜 목록 제목줄("거리 요금 시간 출발지 도착지")을 콜로 착각하지 않도록 값 검사
             if ((f == "origin" || f == "dest") && !isAddrLike(next)) continue
@@ -174,6 +178,8 @@ object CallParser {
         if (norm(t) in UI_WORDS) return false
         if (FARE_K.matches(norm(t))) return false
         if ('|' in t || MONEY.containsMatchIn(t)) return false
+        // 지도 위 표지판: "약 40분 운행", "도보 10.2km(약203분)"
+        if (Regex("""^(약\s*)?\d+(\.\d+)?\s*(분|km|m|시간)(\s*운행)?\s*$""").matches(t) || t.startsWith("도보")) return false
         if (NOT_ADDR.any { it in norm(t) }) return false
         return t.count { it in '가'..'힣' } >= 3 && t.length >= 4
     }
@@ -304,7 +310,8 @@ object CallParser {
         s = s.replace(Regex("""^\s*\(([^)]+)\)\s*\+?\s*"""), "$1)")
         s = s.replace(Regex("""[\uFE0E\uFE0F]"""), "")   // 이모지 꾸밈 문자
         s = s.replace(Regex("""[\[\]]"""), "/")           // "톨포]인천송도유원지" → 조각으로 나눠 '톨포' 제거
-        s = s.replace(Regex("""[@~$+*●★☆◎♨▶◀]"""), " ")
+        s = s.replace(Regex("""[@~$+*●★☆◎♨▶◀♥♡❤]"""), " ")
+        s = s.replace(Regex("""\s*약\s*\d+\s*분\s*운행.*$"""), "")   // 카카오 "약 40분 운행"
         // "화성장안면.수정로" 처럼 점으로 이어진 부분
         s = s.replace(Regex("""(?<=[가-힣0-9])\.(?=[가-힣])"""), " ")
         s = s.replace(Regex("""\s+"""), " ").trim()
