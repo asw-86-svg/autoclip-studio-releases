@@ -119,9 +119,14 @@ class CallReaderService : AccessibilityService() {
         // 기사님이 대리 앱에서 [수락]/[즉시배차]를 누르면 → 지금 콜을 자동운행기록에
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             if (pkg != null) {
-                val words = (event.text?.map { it.toString() }.orEmpty() + listOfNotNull(event.contentDescription?.toString()))
-                    .map { it.replace(Regex("""\s+"""), "") }
-                if (words.any { it in ACCEPT_WORDS }) bg.post { acceptCurrent(pkg, "수락 버튼") }
+                // 버튼 글자가 이벤트에 없으면(카카오 등) 누른 버튼 안쪽 글자까지 확인
+                val words = ArrayList<String>()
+                event.text?.forEach { words += it.toString() }
+                event.contentDescription?.let { words += it.toString() }
+                runCatching { event.source?.let { collect(it, words, 0, intArrayOf(0)) } }
+                val n = words.map { it.replace(Regex("""\s+"""), "") }
+                // 버튼 하나를 누른 경우만 (카드 전체를 누르면 안쪽에 [수락] 글자가 있어도 무시)
+                if (n.size <= 3 && n.any { w -> ACCEPT_WORDS.any { it in w } && "넘기기" !in w && "거절" !in w }) bg.post { acceptCurrent(pkg, "수락 버튼") }
             }
             schedule(450L)
             return
@@ -146,6 +151,7 @@ class CallReaderService : AccessibilityService() {
     }
 
     private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기", "단독배정확인", "단독배정수락", "프로단독배정")
+    private val ASSIGNED_WORDS = listOf("배정완료", "도착알림", "고객과통화", "고객과메시지", "운행시작", "운행을시작", "배차완료")
     private val CANCEL_WORDS = listOf("취소되었습니다", "거부성공", "거부되었습니다", "배차가취소", "오더거부성공")
 
     /** 지금 콜을 '배정'으로 바꾸고 자동운행기록에 넣는다 */
@@ -224,6 +230,8 @@ class CallReaderService : AccessibilityService() {
             // "취소 되었습니다", "오더거부 성공" → 방금 자동배차로 넣은 기록 빼기
             val n = joined.replace(Regex("""\s+"""), "")
             if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
+            // 수락한 뒤에 나오는 배정 화면이 보이면 → 방금 콜을 수락한 것으로 기록
+            else if (ASSIGNED_WORDS.any { it in n }) acceptCurrent(pkg, "배정 화면")
             if (!looks) continue
             val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
             // 자동배차 화면(로지 'N초 후 자동취소', I-Driver 'N초 자동배차 중')은 취소·거부 안 하면 배차 → 바로 기록
