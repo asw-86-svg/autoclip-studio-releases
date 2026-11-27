@@ -112,7 +112,7 @@ class CallReaderService : AccessibilityService() {
         }
     }
 
-    /** 말풍선: 1줄 출발지까지(걸어서 20분 이하 🚶, 넘으면 🚌) / 2줄 출발→도착 차량 시간 🚗 */
+    /** 말풍선: "출 - 🚶12분"(걸어서 20분 넘으면 🚌) / "출 → 도 🚗55분" */
     fun bubbleEta(call: CallInfo) {
         bubble?.text = "출/도"
         Loc.current(this) { here ->
@@ -123,9 +123,9 @@ class CallReaderService : AccessibilityService() {
                 if (here != null && o != null) {
                     val t = Route.toOrigin(Route.straightKm(here, o))
                     val min = (t.sec + 59) / 60
-                    lines += "출발지까지 " + if (t.walk) "🚶${min}분" else "🚌약${min}분"
+                    lines += "출 - " + if (t.walk) "🚶${min}분" else "🚌약${min}분"
                 }
-                if (o != null && d != null) lines += "출→도 🚗${shortDur(Route.drive(this, o, d).sec)}"
+                if (o != null && d != null) lines += "출 → 도 🚗${shortDur(Route.drive(this, o, d).sec)}"
                 if (lines.isNotEmpty()) handler.post {
                     if (Store.current(this)?.key == call.key) bubble?.text = lines.joinToString("\n")
                 }
