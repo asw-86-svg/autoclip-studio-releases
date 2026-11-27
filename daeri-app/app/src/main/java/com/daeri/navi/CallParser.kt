@@ -14,6 +14,10 @@ data class CallInfo(
     val phones: List<Pair<String, String>> = emptyList(),
     val notes: String = "",
     val capturedAt: Long = System.currentTimeMillis(),
+    /** 수락(배정)된 콜 화면에서 읽었는지. 수락 전 팝업이면 false */
+    val accepted: Boolean = false,
+    /** 입금액(수수료) */
+    val deposit: String = "",
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -53,6 +57,14 @@ object CallParser {
             .replace(Regex("""[\u00A0\u2000-\u200A\u202F\u3000]"""), " ")
 
     /** 콜 화면처럼 보이는지 빠르게 판단 (접근성 이벤트마다 호출됨). */
+    /** "50000원" → 50000, "23,200" → 23200, "복합75K" → 75000 */
+    fun won(s: String): Int {
+        val t = clean(s)
+        Regex("""(\d+(?:\.\d+)?)\s*[Kk]""").find(t)?.let { return (it.groupValues[1].toDouble() * 1000).toInt() }
+        val m = Regex("""\d[\d,]*""").find(t) ?: return 0
+        return m.value.replace(",", "").toIntOrNull() ?: 0
+    }
+
     fun looksLikeCall(joined: String): Boolean {
         val n = norm(clean(joined))
         return ("출발지" in n && "도착지" in n) || "배정완료" in n ||
@@ -97,12 +109,18 @@ object CallParser {
             fields["memo"]?.let { append("[메모] ").append(it).append("\n") }
             fields["summary"]?.let { append("[적요] ").append(it) }
         }.trim()
-        val fare = fields["fare"].orEmpty()
+        // 요금 칸이 없으면 "금액: 80000원" 같은 줄에서
+        val fare = fields["fare"] ?: listOfNotNull(fields["origin"], fields["dest"], summary).firstNotNullOfOrNull {
+            Regex("""금액\s*[:：]\s*([\d,]+\s*원?)""").find(it)?.groupValues?.get(1)
+        }.orEmpty()
+        // 상세배차정보(요금 칸이 있는 화면)만 '배정된 콜'로 본다. "N초 후 자동취소" 같은 확인 화면은 제외
+        val accepted = fields.containsKey("fare") || lines.any { norm(it) == "상세배차정보" }
         val phones = extractPhones(summary) +
             listOfNotNull(fields["phone"]?.let { "전화" to it }, fields["phone2"]?.let { "전화2" to it })
         return CallInfo(
             source.ifEmpty { "배차정보" }, originRaw.orEmpty(), destRaw.orEmpty(),
             oq, dq, fare, phones.distinctBy { it.second }, notes,
+            accepted = accepted, deposit = fields["deposit"].orEmpty(),
         )
     }
 
@@ -130,7 +148,7 @@ object CallParser {
         val dest = body.subList(split, body.size).joinToString(" ")
         return CallInfo(
             source.ifEmpty { "카카오T 대리" }, origin, dest,
-            candidates(origin), candidates(dest), fare,
+            candidates(origin), candidates(dest), fare, accepted = true,
         )
     }
 
@@ -256,7 +274,10 @@ object CallParser {
     }
 
     private fun preclean(raw: String): String {
-        var s = clean(raw).replace('\n', ' ')
+        // "금액: 80000원", "회사: …" 같은 줄은 주소가 아니므로 뺀다
+        var s = clean(raw).lines()
+            .filterNot { Regex("""^\s*(금액|요금|회사|전화|연락처)\s*[:：]""").containsMatchIn(it) }
+            .joinToString(" ")
         // "(성동구)+옥수동…" → "성동구)옥수동…"  (뒤에서 '지역)본문' 형식으로 처리됨)
         s = s.replace(Regex("""^\s*\(([^)]+)\)\s*\+?\s*"""), "$1)")
         s = s.replace(Regex("""[@~$+*]"""), " ")

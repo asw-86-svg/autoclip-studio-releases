@@ -129,6 +129,35 @@ class CallParserTest {
         assertTrue(CallParser.looksLikeCall(nfd("출발지\n도착지")))
     }
 
+    @Test fun 금액_변환() {
+        assertEquals(50000, CallParser.won("50000원"))
+        assertEquals(23200, CallParser.won("23,200"))
+        assertEquals(75000, CallParser.won("복합75K"))
+        assertEquals(25000, CallParser.won("후불25K"))
+        assertEquals(0, CallParser.won(""))
+    }
+
+    @Test fun 상세배차정보는_수락된_콜() {
+        val c = CallParser.parse(listOf("요 금", "50000원", "서명", "입금액", "10000원", "출발지", "탁송)경기 수원시 권선구 권선로 308-5", "도착지", "대전 유성구 용산1로 99"))!!
+        assertTrue(c.accepted)
+        assertEquals("10000원", c.deposit)
+    }
+
+    @Test fun 자동취소_확인화면() {
+        val c = CallParser.parse(listOf(
+            "9", "초 후 자동취소",
+            "출발지", "탁송)평택카길애그리푸리나공장\n\n상세:경기 평택시 포승읍 신영리 954-0\n카길애그리퓨리나 평택공\n금액: 80000원",
+            "도착지", "\n\n서울 성동구\n옥수동)옥수동한남하이츠아파트9동/톨포",
+            "추가정보", "출발:탁송)평택카길애그리푸리나공장\n금액: 80000원\n도착:서울 성동구\n회사: <2>서울인천경기",
+            "상세정보보기", "배차취소", "퀵서치\n중지",
+        ))!!
+        assertEquals("경기 평택시 포승읍 신영리 954", c.originQueries.first())
+        assertTrue(c.originQueries.none { "금액" in it })
+        assertTrue(c.destQueries.first(), c.destQueries.first().startsWith("서울 성동구 옥수동"))
+        assertEquals("80000원", c.fare)
+        assertTrue(!c.accepted)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -39,6 +39,7 @@ class CallReaderService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var scanScheduled = false
+    private var lastScan = 0L
     private var bubble: TextView? = null
 
     override fun onServiceConnected() {
@@ -57,26 +58,58 @@ class CallReaderService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName || pkg in IGNORE_PKGS || detectPaused) return
-        if (!scanScheduled) {
+        // 카카오대리처럼 잠깐 떴다 사라지는 팝업도 잡도록: 바로 한 번 읽고, 이어지는 변화는 0.3초 뒤 한 번 더
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastScan >= 250) {
+            lastScan = now
+            scan()
+        } else if (!scanScheduled) {
             scanScheduled = true
-            handler.postDelayed({ scanScheduled = false; scan() }, 700)
+            handler.postDelayed({ scanScheduled = false; lastScan = android.os.SystemClock.uptimeMillis(); scan() }, 300)
         }
     }
 
+    private fun isCallApp(pkg: String) =
+        listOf("callmaner", "logi", "kakao.driver", "kakaomobility", "daeri", "driver").any { it in pkg }
+
     private fun scan() {
-        val root = rootInActiveWindow ?: return
-        val pkg = root.packageName?.toString().orEmpty()
-        if (pkg == packageName || pkg in IGNORE_PKGS) return
-        val texts = ArrayList<String>()
-        collect(root, texts, 0)
-        if (!CallParser.looksLikeCall(texts.joinToString("\n"))) return
-        Store.saveDump(this, pkg, texts)
-        val call = CallParser.parse(texts, appName(pkg)) ?: return
-        if (call.originRaw.isBlank() && call.destRaw.isBlank()) return
-        if (call.key == Store.current(this)?.key) return
-        Store.setCurrent(this, call)
-        showBubble()
-        pulse()
+        // 지금 화면 + 다른 앱 위에 떠 있는 팝업 창까지 모두 읽는다
+        val roots = LinkedHashMap<Int, AccessibilityNodeInfo>()
+        rootInActiveWindow?.let { roots[it.windowId] = it }
+        runCatching { windows.forEach { w -> w.root?.let { r -> roots.putIfAbsent(r.windowId, r) } } }
+        for (root in roots.values) {
+            val pkg = root.packageName?.toString().orEmpty()
+            if (pkg.isEmpty() || pkg == packageName || pkg in IGNORE_PKGS) continue
+            val texts = ArrayList<String>()
+            collect(root, texts, 0)
+            if (texts.isEmpty()) continue
+            val looks = CallParser.looksLikeCall(texts.joinToString("\n"))
+            if (looks || isCallApp(pkg)) Store.addDump(this, appName(pkg), texts)
+            if (!looks) continue
+            val call = CallParser.parse(texts, appName(pkg)) ?: continue
+            if (call.originRaw.isBlank() && call.destRaw.isBlank()) continue
+            if (call.key == Store.current(this)?.key) return
+            Store.setCurrent(this, call)
+            showBubble()
+            pulse()
+            bubbleEta(call)
+            return
+        }
+    }
+
+    /** 말풍선에 출발지까지 도보 시간 표시 (멀면 차 시간) */
+    private fun bubbleEta(call: CallInfo) {
+        bubble?.text = "출/도"
+        Loc.current(this) { here ->
+            if (here == null) return@current
+            Thread {
+                val o = Geo.resolve(this, call.originQueries) ?: return@Thread
+                val km = Route.straightKm(here, o)
+                val walkMin = (Route.walkSec(km) + 59) / 60
+                val label = if (walkMin <= 60) "🚶${walkMin}분" else "🚗${(Route.drive(this, here, o).sec + 59) / 60}분"
+                handler.post { if (Store.current(this)?.key == call.key) bubble?.text = "출/도\n$label" }
+            }.start()
+        }
     }
 
     private fun collect(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
@@ -107,7 +140,7 @@ class CallReaderService : AccessibilityService() {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val v = TextView(this).apply {
             text = "출/도"
-            textSize = 15f
+            textSize = 13f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
@@ -119,7 +152,7 @@ class CallReaderService : AccessibilityService() {
         }
         val (bx, by) = Store.bubblePos(this)
         val lp = WindowManager.LayoutParams(
-            dp(62), dp(62),
+            dp(72), dp(72),
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
@@ -153,7 +186,7 @@ class CallReaderService : AccessibilityService() {
 
     private fun openApp() {
         startActivity(
-            Intent(this, MainActivity::class.java)
+            Intent(this, MainActivity::class.java).putExtra("open", "call")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
         )
     }
