@@ -269,8 +269,14 @@ object CallParser {
      * 콜 '목록' 화면인지: 결제줄('현금 | 확정')이나 거리줄('0.4km')이 여러 개면 목록.
      * 단 [넘기기] 버튼이 있으면 목록 위에 뜬 콜카드이므로 목록으로 보지 않는다.
      */
+    private val HISTORY_WORDS = setOf("수입및운행내역", "운행상세정보", "운행내역", "운행기록", "수익내역", "정산내역")
+
     fun isListScreen(lines: List<String>): Boolean {
         if (lines.any { norm(it) == "넘기기" }) return false
+        // 카카오 '수입 및 운행내역' 같은 지난 운행 기록 화면: 콜이 아님
+        if (lines.any { norm(it).let { n -> n in HISTORY_WORDS || n.startsWith("수입및운행내역") } }) return true
+        if (lines.count { norm(it) == "출발지" } >= 2) return true
+        if (lines.any { Regex("""^\d{1,2}:\d{2}\s*~\s*\d{1,2}:\d{2}$""").matches(it.trim()) } && lines.any { norm(it) == "총수입" }) return true
         val payLines = lines.count { l -> norm(l).let { "|확정" in it || "|미확정" in it } }
         val distLines = lines.count { Regex("""^\d+(\.\d+)?\s*k?m\b""", RegexOption.IGNORE_CASE).containsMatchIn(it.trim()) }
         return payLines >= 2 || distLines >= 2

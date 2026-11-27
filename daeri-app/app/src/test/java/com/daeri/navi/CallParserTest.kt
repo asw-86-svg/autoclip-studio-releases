@@ -1,6 +1,7 @@
 package com.daeri.navi
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -347,6 +348,15 @@ class CallParserTest {
         assertEquals(32000, CallParser.won(c.fare))
         assertEquals("가락동 다농마트", c.originRaw)
         assertEquals("경기 수원시 영통구 매영로 366", c.destQueries.first())
+    }
+
+    @Test fun 카카오_운행내역_화면은_콜아님() {
+        assertNull(CallParser.parse(listOf("수입 및 운행내역", "일별", "월별", "11월 27일 (금)", "운행 건수", "6건", "총 수입", "176,000원",
+            "상세히 보기", "운행 상세 정보", "대리", "출발지", "다농마트", "도착지", "경기 수원시 영통구 매영로 366", "운행시간", "01:23 ~ 01:59",
+            "총 수입", "32,000원", "대리"), "카카오T 대리", allowFreeText = false))
+        // 화면 일부만 읽혀도
+        assertNull(CallParser.parse(listOf("운행 상세 정보", "대리", "출발지", "다농마트", "도착지", "경기 수원시 영통구 매영로 366",
+            "운행시간", "01:23 ~ 01:59", "총 수입", "32,000원"), "카카오T 대리", allowFreeText = false))
     }
 
     @Test fun 콜화면_판별() {
