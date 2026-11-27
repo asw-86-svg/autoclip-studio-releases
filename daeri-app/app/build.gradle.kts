@@ -11,8 +11,8 @@ android {
         applicationId = "com.daeri.navi"
         minSdk = 26
         targetSdk = 34
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "22").toInt()
-        versionName = "0.22." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "23").toInt()
+        versionName = "0.23." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
     // 항상 같은 키로 서명해야 새 버전을 덮어서 설치할 수 있다

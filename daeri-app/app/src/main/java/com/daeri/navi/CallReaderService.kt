@@ -72,10 +72,9 @@ class CallReaderService : AccessibilityService() {
         val type = event.eventType
         if (type == AccessibilityEvent.TYPE_VIEW_SCROLLED) return
         val pkg = event.packageName?.toString()
-        // '대리 앱 볼 때만' 모드: 지금 화면 앱이 바뀌면 말풍선 보이기/숨기기
-        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != null && pkg !in SYSTEM_PKGS) {
-            fgIsCallApp = pkg != packageName && isCallApp(pkg)
-            applyBubbleMode()
+        // '대리 앱 볼 때만' 모드: 화면에 떠 있는 앱 창이 바뀌면 말풍선 보이기/숨기기
+        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || type == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            updateForeground()
         }
         if (pkg != null && (pkg == packageName || pkg in IGNORE_PKGS || !isCallApp(pkg))) return
         // 대리 앱이 알림으로만 콜을 알려줄 때 (화면이 홈이어도)
@@ -260,6 +259,26 @@ class CallReaderService : AccessibilityService() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     @SuppressLint("ClickableViewAccessibility")
+    /**
+     * 지금 실제로 떠 있는 앱 창들 중 대리 앱이 있는지 직접 확인한다.
+     * (말풍선 자신의 변화나 토스트 같은 신호로 판단하면 스스로 숨어버리는 문제가 있었음)
+     * 화면 분할이면 둘 중 하나라도 대리 앱이면 보인다.
+     */
+    private fun updateForeground() {
+        bg.post {
+            val appPkgs = runCatching {
+                windows.filter { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION }
+                    .mapNotNull { it.root?.packageName?.toString() }
+            }.getOrNull() ?: return@post
+            if (appPkgs.isEmpty()) return@post
+            val call = appPkgs.any { it != packageName && it !in SYSTEM_PKGS && isCallApp(it) }
+            if (call != fgIsCallApp) {
+                fgIsCallApp = call
+                handler.post { applyBubbleMode() }
+            }
+        }
+    }
+
     /** 지금 화면에 떠 있는 앱이 대리 앱인지 */
     @Volatile private var fgIsCallApp = true
 
