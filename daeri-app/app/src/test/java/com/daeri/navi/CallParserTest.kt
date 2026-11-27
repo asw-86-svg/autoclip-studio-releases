@@ -231,6 +231,25 @@ class CallParserTest {
         assertTrue(c.destRaw.none { it == '\uE001' })
     }
 
+    @Test fun 카카오_콜카드_넘기기_여러줄() {
+        val c = CallParser.parse(listOf("출발", "도보 714m(약12분", "도착", "약 23분 운행",
+            "출발", "권선동 한라비발디파크오피스텔",
+            "도착", "경기 화성 효행구 봉담읍", "화성봉담2그랑드비체아파트", "약 23분 운행",
+            "실제\n수익", "카드 | 확정 | 23,200", "넘기기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals("권선동 한라비발디파크오피스텔", c.originRaw)
+        assertTrue(c.destRaw, c.destRaw.contains("화성봉담2그랑드비체아파트"))
+        assertEquals(23200, CallParser.won(c.fare))
+    }
+
+    @Test fun 카카오_콜카드_이름값_한덩어리() {
+        val c = CallParser.parse(listOf("출발, 권선동 한라비발디파크오피스텔",
+            "도착, 경기 화성 효행구 봉담읍, 화성봉담2그랑드비체아파트, 약 23분 운행",
+            "실제 수익, 카드 | 확정 | 23,200", "넘기기", "수락"), "카카오T 대리", allowFreeText = false)!!
+        assertEquals("권선동 한라비발디파크오피스텔", c.originRaw)
+        assertTrue(c.destQueries.first(), c.destQueries.first().contains("봉담"))
+        assertEquals(23200, CallParser.won(c.fare))
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

@@ -93,11 +93,40 @@ object CallParser {
     }
 
     // ---------- 1. 상세배차정보 형식 (항목이름 → 다음 칸이 값) ----------
-    private fun parseLabeled(lines: List<String>, source: String): CallInfo? {
+    // "출발 권선동 …", "출발, 권선동 …", "도착: …" 처럼 칸 이름과 값이 한 덩어리로 온 줄
+    private val INLINE = Regex("""^\s*(출발지?|도착지?|실제\s*수익|요금)\s*[,:：]?\s+(.+)$""")
+
+    /** 주소가 여러 줄(칸)로 나뉘어 오면 이어 붙인다: "경기 화성 효행구 봉담읍" + "화성봉담2그랑드비체아파트" */
+    private fun continueAddr(lines: List<String>, from: Int, first: String): String {
+        var v = first
+        var j = from
+        while (j < lines.size && j <= from + 2) {
+            val l = lines[j]
+            if (LABELS.containsKey(norm(l)) || INLINE.matches(l) || !isAddrLike(l) || norm(l) in UI_WORDS) break
+            v += " " + l
+            j++
+        }
+        return v
+    }
+
+    private fun parseLabeled(lines0: List<String>, source: String): CallInfo? {
+        // 한 덩어리로 온 "출발, 권선동…" 은 이름/값 두 줄로 나눠서 같은 방식으로 읽는다
+        val lines = lines0.flatMap { l ->
+            INLINE.find(l)?.let { m ->
+                val name = m.groupValues[1]
+                // 주소의 ", " 는 띄어쓰기로 (금액 23,200 의 쉼표는 그대로)
+                val value = if (name.startsWith("출발") || name.startsWith("도착")) m.groupValues[2].replace(Regex(""",\s+"""), " ") else m.groupValues[2]
+                listOf(name, value)
+            } ?: listOf(l)
+        }
         val fields = HashMap<String, String>()
         for (i in lines.indices) {
             val f = LABELS[norm(lines[i])] ?: continue
-            var next = lines.getOrNull(i + 1) ?: continue
+            var nextIdx = i + 1
+            var next = lines.getOrNull(nextIdx) ?: continue
+            // "♥" 같은 아이콘이 따로 한 칸이면 그 다음 줄을 값으로
+            if (next.none { it in '가'..'힣' || it.isDigit() }) { nextIdx = i + 2; next = lines.getOrNull(nextIdx) ?: continue }
+            if ((f == "origin" || f == "dest") && isAddrLike(next)) next = continueAddr(lines, nextIdx + 1, next)
             // "♥" 같은 아이콘이 따로 한 칸이면 그 다음 줄을 값으로
             if (next.none { it in '가'..'힣' || it.isDigit() }) next = lines.getOrNull(i + 2) ?: continue
             if (LABELS.containsKey(norm(next))) continue // 값이 비어 있는 칸
@@ -171,7 +200,7 @@ object CallParser {
     }
 
     // ---------- 3. 콜 목록에서 콜을 눌렀을 때 뜨는 수락 팝업 (콜마너 등) ----------
-    private val UI_WORDS = setOf("닫기", "수락", "거절", "취소", "확인", "예약콜", "일반설정", "거리", "요금", "시간", "출발지", "도착지")
+    private val UI_WORDS = setOf("닫기", "수락", "거절", "취소", "확인", "예약콜", "일반설정", "거리", "요금", "시간", "출발지", "도착지", "넘기기", "실제", "수익")
     private val FARE_K = Regex("""^(?:[가-힣]{0,3})\d+(?:\.\d+)?K$""", RegexOption.IGNORE_CASE)
 
     // 주소가 아닌 줄(결제·정산·메뉴 글자)에 자주 나오는 말
