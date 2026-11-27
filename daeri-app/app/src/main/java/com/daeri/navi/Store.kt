@@ -137,6 +137,11 @@ object Store {
         get() = p(this).getInt("bubbleMode", 0)
         set(v) = p(this).edit().putInt("bubbleMode", v).apply()
 
+    /** 오늘의 목표 금액 (출근할 때 입력). 날짜가 바뀌면 다시 입력 */
+    fun goal(ctx: Context, day: String): Int? =
+        if (p(ctx).getString("goalDay", "") == day) p(ctx).getInt("goal", 0) else null
+    fun setGoal(ctx: Context, day: String, won: Int) = p(ctx).edit().putString("goalDay", day).putInt("goal", won).apply()
+
     var Context.detectPaused: Boolean
         get() = p(this).getBoolean("paused", false)
         set(v) = p(this).edit().putBoolean("paused", v).apply()

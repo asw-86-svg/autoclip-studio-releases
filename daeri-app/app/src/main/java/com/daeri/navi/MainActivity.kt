@@ -175,28 +175,40 @@ class MainActivity : Activity() {
 
         if (!serviceEnabled()) root.addView(accessibilityWarning())
 
-        // 오늘의 운행 (출근 = 자동 읽기 켜기, 퇴근 = 끄기)
+        // 오늘의 운행 (출근 = 목표 입력 + 자동 읽기 켜기, 퇴근 = 끄기)
         val working = serviceEnabled() && !detectPaused
+        val today = dayKey(System.currentTimeMillis())
+        val tToday = Store.trips(this).filter { dayKey(it.time) == today }
+        val netToday = tToday.sumOf { it.net }
+        val goal = Store.goal(this, today)
         root.addView(card().apply {
             addView(text("오늘의 운행", 14f, grey, bold = true))
-            addView(row(
-                listOf(
-                    pillButton("출 근", if (working) blue else innerBg, white) {
-                        if (!serviceEnabled()) { toast("먼저 접근성에서 대리내비를 켜주세요"); startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-                        else { detectPaused = false; toast("출근! 콜 화면을 자동으로 읽어요"); render() }
-                    },
-                    pillButton("퇴 근", if (!working) blue else innerBg, white) {
-                        detectPaused = true; CallReaderService.instance?.hideBubble(); toast("퇴근! 자동 읽기를 멈췄어요"); render()
-                    },
-                ),
-                weights = listOf(2.6f, 1f),
-            ))
-            addView(text(if (working) "🟢 출근 중 · 콜 화면을 자동으로 읽고 있어요" else "⚪ 퇴근 · 자동 읽기 꺼짐", 13f, grey).apply { setPadding(0, dp(8), 0, 0) })
+            if (working) {
+                // 목표까지 남은 금액: 모자라면 빨간 -금액 ⬇, 넘으면 파란 +금액 ⬆
+                val diff = netToday - (goal ?: 0)
+                val amount = TextView(this@MainActivity).apply {
+                    text = if (goal == null) "목표 입력 ›" else (if (diff >= 0) "+" else "-") + won(kotlin.math.abs(diff)) + "원 " + if (diff >= 0) "⬆" else "⬇"
+                    textSize = if (goal == null) 20f else 27f
+                    setTextColor(if (goal == null) blue else if (diff >= 0) blue else red)
+                    setTypeface(typeface, Typeface.BOLD)
+                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                    setOnClickListener { askGoal(today) }
+                }
+                addView(row(
+                    listOf(amount, pillButton("퇴 근", innerBg, white) { clockOut(today) }),
+                    weights = listOf(2.6f, 1f),
+                ))
+                addView(text(
+                    "🟢 출근 중 · " + (goal?.let { "목표 ${won(it)}원 · 오늘 순익 ${won(netToday)}원 (금액을 누르면 목표 수정)" } ?: "콜 화면을 자동으로 읽고 있어요"),
+                    13f, grey,
+                ).apply { setPadding(0, dp(8), 0, 0) })
+            } else {
+                addView(row(listOf(pillButton("출 근", blue, white) { clockIn(today) })))
+                addView(text("⚪ 퇴근 · 자동 읽기 꺼짐", 13f, grey).apply { setPadding(0, dp(8), 0, 0) })
+            }
         })
 
         // 오늘 합계
-        val today = dayKey(System.currentTimeMillis())
-        val tToday = Store.trips(this).filter { dayKey(it.time) == today }
         root.addView(card().apply {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -231,6 +243,59 @@ class MainActivity : Activity() {
             addView(divider())
             addView(menuItem("⚙️", "설정", null) { go(Screen.SETTINGS) })
         })
+    }
+
+    private fun clockIn(today: String) {
+        if (!serviceEnabled()) { toast("먼저 접근성에서 대리내비를 켜주세요"); startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); return }
+        detectPaused = false
+        CallReaderService.instance?.applyBubbleMode()
+        askGoal(today) { toast("출근! 콜 화면을 자동으로 읽어요") }
+    }
+
+    private fun clockOut(today: String) {
+        val list = Store.trips(this).filter { dayKey(it.time) == today }
+        val net = list.sumOf { it.net }
+        val goal = Store.goal(this, today)
+        val msg = buildString {
+            append("오늘 ${list.size}콜\n")
+            append("수입 ${won(list.sumOf { it.income })}원 · 지출 ${won(list.sumOf { it.expense })}원\n")
+            append("순익 ${won(net)}원")
+            goal?.let { g ->
+                val d = net - g
+                append("\n\n목표 ${won(g)}원 대비 ")
+                append(if (d >= 0) "+${won(d)}원 달성! 🎉" else "${won(-d)}원 모자라요")
+            }
+            append("\n\n퇴근하면 콜 화면 자동 읽기를 멈춰요.")
+        }
+        AlertDialog.Builder(this).setTitle("퇴근할까요?").setMessage(msg)
+            .setPositiveButton("퇴근") { _, _ ->
+                detectPaused = true; CallReaderService.instance?.hideBubble(); toast("수고하셨어요! 안전운행 하세요"); render()
+            }
+            .setNegativeButton("취소", null).show()
+    }
+
+    /** 오늘의 목표 금액 입력 */
+    private fun askGoal(today: String, after: (() -> Unit)? = null) {
+        val et = edit("예) 300000").apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            gravity = Gravity.CENTER; textSize = 22f
+            Store.goal(this@MainActivity, today)?.takeIf { it > 0 }?.let { setText(it.toString()) }
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0)
+            addView(et)
+            addView(text("단위: 원", 13f, grey).apply { gravity = Gravity.END })
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🎯 목표")
+            .setMessage("오늘의 목표 금액을 입력하세요")
+            .setView(box)
+            .setPositiveButton("확인") { _, _ ->
+                et.text.toString().filter { it.isDigit() }.toIntOrNull()?.let { Store.setGoal(this, today, it) }
+                after?.invoke(); render()
+            }
+            .setNegativeButton("건너뛰기") { _, _ -> after?.invoke(); render() }
+            .show()
     }
 
     private fun versionName(): String = runCatching {
