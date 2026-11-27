@@ -24,6 +24,7 @@ import android.widget.Toast
 import com.daeri.navi.MapLauncher.App
 import com.daeri.navi.MapLauncher.Mode
 import com.daeri.navi.Store.bubbleMode
+import com.daeri.navi.Store.commissionRate
 import com.daeri.navi.Store.detectPaused
 import com.daeri.navi.Store.homeAddress
 import com.daeri.navi.Store.kakaoBubble
@@ -35,7 +36,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private enum class Screen { HOME, CALL, CALLS, LOG, DAY, PASTE, SETTINGS }
+    private enum class Screen { HOME, CALL, CALLS, LOG, DAY, EDIT, PASTE, SETTINGS }
 
     // ---------- 색 ----------
     private val black = 0xFF000000.toInt()
@@ -114,6 +115,7 @@ class MainActivity : Activity() {
         when (screen) {
             Screen.HOME -> super.onBackPressed()
             Screen.DAY -> go(dayBack)
+            Screen.EDIT -> go(editBack)
             else -> go(Screen.HOME)
         }
     }
@@ -148,6 +150,7 @@ class MainActivity : Activity() {
             Screen.CALLS -> renderCalls()
             Screen.LOG -> renderLog()
             Screen.DAY -> renderDay()
+            Screen.EDIT -> renderEditor()
             Screen.PASTE -> renderPaste()
             Screen.SETTINGS -> renderSettings()
         }
@@ -609,11 +612,11 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------------- 하루 기록 ----------------
+    // ---------------- 하루 기록 (자동운행기록) ----------------
     private fun renderDay() {
         val isToday = dayKey(day.timeInMillis) == dayKey(System.currentTimeMillis())
         val title = if (isToday) "자동운행기록" else SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(day.time)
-        setTop(title, true, "+ 입력") { editTrip(null) }
+        setTop(title, true, "+ 입력") { openEditor(null) }
         val key = dayKey(day.timeInMillis)
         val list = Store.trips(this).filter { dayKey(it.time) == key }.sortedBy { it.time }
         if (list.isEmpty()) {
@@ -622,54 +625,224 @@ class MainActivity : Activity() {
         val hm = SimpleDateFormat("HH:mm", Locale.KOREA)
         list.forEach { t ->
             root.addView(card().apply {
+                setOnClickListener { openEditor(t) }
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    addView(text(hm.format(Date(t.time)) + if (t.memo.isNotEmpty()) "  ${t.memo}" else "", 15f, grey),
+                    addView(text(hm.format(Date(t.time)) + "  " + t.program, 15f, grey).apply { maxLines = 1 },
                         LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     addView(text("순익 ${won(t.net)}", 17f, white, bold = true))
                 })
-                if (t.title.isNotEmpty()) addView(text(t.title, 15f, white))
+                if (t.origin.isNotEmpty()) addView(text(dot(blue, "●  ${t.origin}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 addView(totalsRow(t.income, t.expense, showNet = false))
                 addView(row(listOf(
-                    button("수정", innerBg) { editTrip(t) },
+                    button("수정", innerBg) { openEditor(t) },
                     button("삭제", 0xFF4A2A2C.toInt()) { confirm("이 기록을 지울까요?") { Store.deleteTrip(this@MainActivity, t.id); render() } },
                 )))
             })
         }
-        root.addView(button("+ 일지 직접 입력 (콜·교통비 등)", blue) { editTrip(null) })
+        root.addView(button("+ 새일지 등록", blue) { openEditor(null) })
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
         footer.addView(summaryBlock("일일 합계", list))
     }
 
-    private fun editTrip(t: Store.Trip?) {
-        val inc = edit("수입 (원)").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(t?.income?.takeIf { it > 0 }?.toString().orEmpty()) }
-        val exp = edit("지출 (원) · 입금액/수수료/교통비").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(t?.expense?.takeIf { it > 0 }?.toString().orEmpty()) }
-        val title = edit("내용 (예: 수원 → 당진)").apply { setText(t?.title.orEmpty()) }
-        val memo = edit("메모 (예: 택시비)").apply { setText(t?.memo.orEmpty()) }
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0)
-            addView(inc); addView(exp); addView(title); addView(memo)
-        }
-        AlertDialog.Builder(this)
-            .setTitle(if (t == null) "일지 입력" else "일지 수정")
-            .setView(box)
-            .setPositiveButton("저장") { _, _ ->
-                val time = t?.time ?: run {
-                    val now = Calendar.getInstance()
-                    if (dayKey(now.timeInMillis) == dayKey(day.timeInMillis)) now.timeInMillis
-                    else (day.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0) }.timeInMillis
-                }
-                Store.upsertTrip(this, Store.Trip(
-                    id = t?.id ?: System.currentTimeMillis(), time = time,
-                    income = inc.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0,
-                    expense = exp.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0,
-                    title = title.text.toString().trim(), memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
-                ))
-                render()
+    // ---------------- 새일지 등록 / 일지 수정 ----------------
+    private var editing: Store.Trip? = null
+    private var editBack = Screen.DAY
+
+    private fun openEditor(t: Store.Trip?) {
+        editing = t
+        editBack = screen
+        go(Screen.EDIT)
+    }
+
+    private fun renderEditor() {
+        val t = editing
+        setTop(if (t == null) "새일지 등록" else "일지 수정", true)
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = t?.time ?: run {
+                val now = Calendar.getInstance()
+                if (dayKey(now.timeInMillis) == dayKey(day.timeInMillis)) now.timeInMillis
+                else (day.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0) }.timeInMillis
             }
-            .setNegativeButton("취소", null)
-            .show()
+        }
+        val dFmt = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA)
+        val tFmt = SimpleDateFormat("HH:mm", Locale.KOREA)
+
+        // ---- 운행 정보 ----
+        root.addView(sectionTitle("운행 정보"))
+        val dateBtn = smallButton(dFmt.format(cal.time), innerBg)
+        val timeBtn = smallButton(tFmt.format(cal.time), innerBg)
+        dateBtn.setOnClickListener {
+            android.app.DatePickerDialog(this, { _, y, m, d ->
+                cal.set(y, m, d); dateBtn.text = dFmt.format(cal.time)
+            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        }
+        timeBtn.setOnClickListener {
+            android.app.TimePickerDialog(this, { _, h, mi ->
+                cal.set(Calendar.HOUR_OF_DAY, h); cal.set(Calendar.MINUTE, mi); timeBtn.text = tFmt.format(cal.time)
+            }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
+        }
+        val origin = edit("출발지").apply { setText(t?.origin.orEmpty()) }
+        val via = edit("경유지 (없으면 비워두세요)").apply { setText(t?.via.orEmpty()) }
+        val dest = edit("도착지").apply { setText(t?.dest.orEmpty()) }
+        root.addView(card().apply {
+            addView(formRow("일시", row(listOf(dateBtn, timeBtn), weights = listOf(1.4f, 1f))))
+            addView(formRow(dot(blue, "● 출발"), origin))
+            addView(formRow(dot(0xFFF5A623.toInt(), "● 경유"), via))
+            addView(formRow(dot(red, "● 도착"), dest))
+        })
+
+        // ---- 요금 · 비용 ----
+        root.addView(sectionTitle("요금 · 비용"))
+        val fare = numEdit(t?.fare).apply { setTextColor(blue) }
+        val program = edit("대리 앱 (예: 카카오대리)").apply { setText(t?.program.orEmpty()) }
+        val viaFee = numEdit(t?.viaFee)
+        val tip = numEdit(t?.tip)
+        val commission = numEdit(t?.commission).apply { setTextColor(red) }
+        val insurance = numEdit(t?.insurance)
+        val transport = numEdit(t?.transport)
+        var transportMode = t?.transportMode.orEmpty()
+        val modeBtn = smallButton(transportMode.ifEmpty { "교통수단" }, innerBg)
+        modeBtn.setOnClickListener {
+            val modes = arrayOf("버스", "지하철", "택시", "킥보드", "자전거", "도보", "기타")
+            AlertDialog.Builder(this).setTitle("교통수단").setItems(modes) { _, i ->
+                transportMode = modes[i]; modeBtn.text = transportMode
+            }.show()
+        }
+        fun add(e: EditText, n: Int) = e.setText(((e.text.toString().toIntOrNull() ?: 0) + n).toString())
+        fun put(e: EditText, n: Int) = e.setText(n.toString())
+
+        root.addView(card().apply {
+            addView(formRow("요금", fare))
+            addView(formRow("프로그램", program))
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(80), 0, 0, 0)
+                listOf("카카오대리", "로지", "콜마너", "I-Driver").forEach { n ->
+                    addView(chip(n) { program.setText(n) })
+                }
+            })
+            addView(formDivider())
+            addView(formRow("경유비", row(listOf(viaFee, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(viaFee, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(viaFee, 5000) }), weights = listOf(1.6f, 1f, 1f))))
+            addView(formRow("팁", row(listOf(tip, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(tip, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(tip, 5000) }), weights = listOf(1.6f, 1f, 1f))))
+            addView(formDivider())
+            addView(formRow("수수료", row(listOf(commission, smallButton("0원", innerBg) { put(commission, 0) }), weights = listOf(2.6f, 1f))))
+            addView(formRow("보험료", row(listOf(insurance, smallButton("1000", innerBg) { put(insurance, 1000) }, smallButton("5000", innerBg) { put(insurance, 5000) }), weights = listOf(1.6f, 1f, 1f))))
+            addView(formRow("교통비", row(listOf(transport, modeBtn), weights = listOf(1.6f, 1.2f))))
+            addView(text("수수료는 요금의 ${commissionRate}%로 자동 계산돼요 (설정에서 바꿀 수 있어요)", 12f, grey).apply { setPadding(0, dp(8), 0, 0) })
+        })
+
+        // ---- 메모 ----
+        root.addView(sectionTitle("메모"))
+        val memo = edit("특이사항 (예: 대기 20분, 우천)").apply { setText(t?.memo.orEmpty()) }
+        root.addView(card().apply { addView(memo) })
+
+        // ---- 정산 (아래 고정) ----
+        val inTv = text("0", 20f, blue, bold = true)
+        val outTv = text("0", 20f, red, bold = true)
+        val netTv = text("0", 20f, white, bold = true)
+        fun v(e: EditText) = e.text.toString().filter { it.isDigit() }.toIntOrNull() ?: 0
+        fun recalc() {
+            val i = v(fare) + v(viaFee) + v(tip)
+            val o = v(commission) + v(insurance) + v(transport)
+            inTv.text = won(i); outTv.text = won(o); netTv.text = won(i - o)
+        }
+        // 요금을 바꾸면 수수료 자동 계산 (수수료를 직접 고치기 전까지)
+        var commissionTouched = t != null && t.commission != t.fare * commissionRate / 100
+        var settingCommission = false
+        val watcher = object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { recalc() }
+        }
+        listOf(viaFee, tip, insurance, transport).forEach { it.addTextChangedListener(watcher) }
+        commission.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) { if (!settingCommission) commissionTouched = true; recalc() }
+        })
+        fare.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (!commissionTouched) {
+                    settingCommission = true
+                    val c = v(fare) * commissionRate / 100
+                    commission.setText(if (c > 0) c.toString() else "")
+                    settingCommission = false
+                }
+                recalc()
+            }
+        })
+        recalc()
+
+        fun save(zeroCommission: Boolean) {
+            if (zeroCommission) { settingCommission = true; commission.setText("0"); settingCommission = false }
+            Store.upsertTrip(this, Store.Trip(
+                id = t?.id ?: System.currentTimeMillis(), time = cal.timeInMillis,
+                origin = origin.text.toString().trim(), via = via.text.toString().trim(), dest = dest.text.toString().trim(),
+                program = program.text.toString().trim(),
+                fare = v(fare), viaFee = v(viaFee), tip = v(tip),
+                commission = v(commission), insurance = v(insurance), transport = v(transport), transportMode = transportMode,
+                memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
+            ))
+            toast("저장했어요")
+            go(editBack)
+        }
+
+        footer.visibility = View.VISIBLE
+        footer.setPadding(dp(16), dp(10), dp(16), dp(12))
+        footer.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(text("정산", 17f, white, bold = true), LinearLayout.LayoutParams(dp(56), WRAP_CONTENT))
+            listOf(Triple("수입", inTv, blue), Triple("지출", outTv, red), Triple("순익", netTv, white)).forEach { (l, tv, _) ->
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(text(l, 12f, grey)); addView(tv)
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            }
+        })
+        footer.addView(row(listOf(
+            button("저장", blue) { save(false) },
+            button("수수료 0원 저장", innerBg) { save(true) },
+        ), weights = listOf(1.2f, 1f)))
+    }
+
+    private fun sectionTitle(s: String) = text(s, 14f, grey, bold = true).apply { setPadding(dp(6), dp(6), 0, dp(6)) }
+
+    private fun formRow(label: CharSequence, v: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
+        addView(text(label, 15f, 0xFFBBBBC0.toInt(), bold = true), LinearLayout.LayoutParams(dp(80), WRAP_CONTENT))
+        if (v.layoutParams is LinearLayout.LayoutParams) (v.layoutParams as LinearLayout.LayoutParams).topMargin = 0
+        addView(v, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+    }
+
+    private fun formDivider() = View(this).apply {
+        setBackgroundColor(line)
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(6) }
+    }
+
+    private fun numEdit(value: Int?) = edit("0").apply {
+        inputType = InputType.TYPE_CLASS_NUMBER
+        if (value != null && value > 0) setText(value.toString())
+    }
+
+    private fun smallButton(label: String, color: Int, textColor: Int = white, onClick: (() -> Unit)? = null) = Button(this).apply {
+        text = label; isAllCaps = false; textSize = 15f; setTextColor(textColor); setTypeface(typeface, Typeface.BOLD)
+        minHeight = dp(50); minimumHeight = dp(50); setPadding(dp(4), 0, dp(4), 0)
+        background = rounded(color, 12)
+        if (onClick != null) setOnClickListener { onClick() }
+    }
+
+    private fun chip(label: String, onClick: () -> Unit) = TextView(this).apply {
+        text = label; textSize = 12f; setTextColor(0xFFCCCCCC.toInt())
+        setPadding(dp(10), dp(6), dp(10), dp(6)); background = rounded(innerBg, 14, line)
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(6); topMargin = dp(6) }
+        setOnClickListener { onClick() }
     }
 
     // ---------------- 직접 입력 ----------------
@@ -728,9 +901,13 @@ class MainActivity : Activity() {
             addView(text("카카오 REST API 키 (넣으면 주소 찾기·도착시간·톨비가 정확해져요)", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
             val key = edit("developers.kakao.com 에서 무료 발급").apply { setText(kakaoKey) }
             addView(key)
+            addView(text("수수료율 (%) — 입금액이 안 나오는 콜(카카오 등) 수수료 자동 계산", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
+            val rate = edit("20").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(commissionRate.toString()) }
+            addView(rate)
             addView(button("저장", blue) {
                 homeAddress = home.text.toString().trim()
                 kakaoKey = key.text.toString().trim()
+                rate.text.toString().toIntOrNull()?.let { commissionRate = it }
                 toast("저장했어요")
             })
         })

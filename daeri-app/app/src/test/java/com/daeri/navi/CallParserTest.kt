@@ -250,6 +250,11 @@ class CallParserTest {
         assertEquals(23200, CallParser.won(c.fare))
     }
 
+    @Test fun 카카오_메뉴글자는_콜아님() {
+        val c = CallParser.parse(listOf("콜 대기", "콜 수요 지도", "리스트 설정", "운행중", "콜 대기", "콜 수요 지도", "리스트 설정"), "카카오T 대리", allowFreeText = false)
+        assertTrue(c == null)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

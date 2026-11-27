@@ -61,17 +61,42 @@ object Store {
     fun clearHistory(ctx: Context) = writeHistory(ctx, emptyList())
 
     // ---------------- 운행일지 ----------------
+    /**
+     * 운행일지 한 건. 수입 = 요금 + 경유비 + 팁, 지출 = 수수료 + 보험료 + 교통비
+     */
     data class Trip(
-        val id: Long, val time: Long, val income: Int, val expense: Int,
-        val title: String, val memo: String, val callKey: String = "",
-    ) { val net get() = income - expense }
+        val id: Long, val time: Long,
+        val origin: String = "", val via: String = "", val dest: String = "",
+        val program: String = "",
+        val fare: Int = 0, val viaFee: Int = 0, val tip: Int = 0,
+        val commission: Int = 0, val insurance: Int = 0, val transport: Int = 0, val transportMode: String = "",
+        val memo: String = "", val callKey: String = "",
+    ) {
+        val income get() = fare + viaFee + tip
+        val expense get() = commission + insurance + transport
+        val net get() = income - expense
+        val title get() = listOf(origin, dest).filter { it.isNotBlank() }.joinToString(" → ")
+    }
 
     fun trips(ctx: Context): List<Trip> = runCatching {
         val arr = JSONArray(p(ctx).getString("trips", "[]"))
         (0 until arr.length()).map { i ->
             arr.getJSONObject(i).let { o ->
-                Trip(o.getLong("id"), o.getLong("time"), o.optInt("in"), o.optInt("out"),
-                    o.optString("title"), o.optString("memo"), o.optString("key"))
+                if (o.has("fare")) Trip(
+                    o.getLong("id"), o.getLong("time"),
+                    o.optString("origin"), o.optString("via"), o.optString("dest"), o.optString("program"),
+                    o.optInt("fare"), o.optInt("viaFee"), o.optInt("tip"),
+                    o.optInt("commission"), o.optInt("insurance"), o.optInt("transport"), o.optString("transportMode"),
+                    o.optString("memo"), o.optString("key"),
+                ) else {
+                    // 예전 형식(수입/지출/제목)에서 옮기기
+                    val title = o.optString("title")
+                    Trip(
+                        o.getLong("id"), o.getLong("time"),
+                        origin = title.substringBefore(" → ", title), dest = if (" → " in title) title.substringAfter(" → ") else "",
+                        program = o.optString("memo"), fare = o.optInt("in"), commission = o.optInt("out"), callKey = o.optString("key"),
+                    )
+                }
             }
         }
     }.getOrDefault(emptyList())
@@ -80,8 +105,11 @@ object Store {
         val arr = JSONArray()
         list.sortedBy { it.time }.forEach { t ->
             arr.put(JSONObject().apply {
-                put("id", t.id); put("time", t.time); put("in", t.income); put("out", t.expense)
-                put("title", t.title); put("memo", t.memo); put("key", t.callKey)
+                put("id", t.id); put("time", t.time)
+                put("origin", t.origin); put("via", t.via); put("dest", t.dest); put("program", t.program)
+                put("fare", t.fare); put("viaFee", t.viaFee); put("tip", t.tip)
+                put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
+                put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
             })
         }
         p(ctx).edit().putString("trips", arr.toString()).apply()
@@ -101,10 +129,15 @@ object Store {
     private fun recordAccepted(ctx: Context, c: CallInfo) {
         val list = trips(ctx)
         if (list.any { it.callKey == c.key && abs(it.time - c.capturedAt) < 12 * 3600_000L }) return
+        val fare = CallParser.won(c.fare)
+        val deposit = CallParser.won(c.deposit)
         upsertTrip(ctx, Trip(
             id = c.capturedAt, time = c.capturedAt,
-            income = CallParser.won(c.fare), expense = CallParser.won(c.deposit),
-            title = "${c.originDisplay} → ${c.destDisplay}", memo = c.source, callKey = c.key,
+            origin = c.originDisplay, dest = c.destDisplay, program = programName(c.source),
+            fare = fare,
+            // 입금액(로지)이 있으면 그게 수수료, 없으면 설정한 수수료율로 계산
+            commission = if (deposit > 0) deposit else fare * ctx.commissionRate / 100,
+            callKey = c.key,
         ))
     }
 
@@ -121,7 +154,7 @@ object Store {
         val keepHist = hist.filterNot { bad(it.source) }
         if (keepHist.size != hist.size) writeHistory(ctx, keepHist)
         val tr = trips(ctx)
-        val keepTrips = tr.filterNot { bad(it.memo) }
+        val keepTrips = tr.filterNot { bad(it.program.ifEmpty { it.memo }) && it.callKey.isNotEmpty() }
         if (keepTrips.size != tr.size) saveTrips(ctx, keepTrips)
         current(ctx)?.let { if (bad(it.source)) p(ctx).edit().remove("current").apply() }
         val dumps = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())
@@ -129,6 +162,20 @@ object Store {
         for (i in 0 until dumps.length()) dumps.getJSONObject(i).let { if (!bad(it.optString("app"))) keepDumps.put(it) }
         p(ctx).edit().putString("dumps", keepDumps.toString()).apply()
     }
+
+    /** 대리 앱 이름을 일지용 짧은 이름으로 */
+    fun programName(source: String) = when {
+        "카카오" in source -> "카카오대리"
+        "로지" in source -> "로지"
+        "콜마너" in source -> "콜마너"
+        "driver" in source.lowercase() -> "I-Driver"
+        else -> source
+    }
+
+    /** 수수료율(%) — 입금액이 없는 콜(카카오 등)의 수수료 자동 계산에 사용. 기본 20% */
+    var Context.commissionRate: Int
+        get() = p(this).getInt("commissionRate", 20)
+        set(v) = p(this).edit().putInt("commissionRate", v.coerceIn(0, 100)).apply()
 
     // ---------------- 설정 ----------------
     var Context.homeAddress: String

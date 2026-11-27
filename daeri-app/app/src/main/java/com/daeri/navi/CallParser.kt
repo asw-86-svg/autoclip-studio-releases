@@ -184,7 +184,7 @@ object CallParser {
             if (PRICE.matches(l.trim())) { fare = l.trim(); break }
             if ("카드" in n || "현금" in n || n.startsWith("고객과")) break
             if (n in KAKAO_SKIP.map(::norm)) continue
-            body += l.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            body += l.split("\n").map { it.trim() }.filter { it.isNotEmpty() && isAddrLike(it) || it.length in 2..6 && it.endsWith("동") }
         }
         if (body.size < 2) return null
         // 도착지는 보통 '경기 …', '서울 …' 처럼 시·도로 시작한다
@@ -204,7 +204,9 @@ object CallParser {
     private val FARE_K = Regex("""^(?:[가-힣]{0,3})\d+(?:\.\d+)?K$""", RegexOption.IGNORE_CASE)
 
     // 주소가 아닌 줄(결제·정산·메뉴 글자)에 자주 나오는 말
-    private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과")
+    private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과",
+        // 카카오T 대리 화면 메뉴 글자
+        "콜대기", "콜수요", "리스트설정", "콜리스트", "정렬옵션", "새로고침", "콜찾기", "귀가지원", "단독배정", "선호도착", "나의예약", "이벤트", "메뉴")
     private val MONEY = Regex("""\d{1,3}(,\d{3})+""")
 
     private fun isAddrLike(l: String): Boolean {
