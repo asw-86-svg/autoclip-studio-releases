@@ -77,4 +77,5 @@ class ScreenshotTest {
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 4600)
     @Test fun log() = shot("log", "log")
+    @Test fun settingsHour() = shot("settings_hour", "settings", 5600) { it.putExtra("hourOpen", true) }
 }

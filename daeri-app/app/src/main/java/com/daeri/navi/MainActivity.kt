@@ -66,6 +66,7 @@ class MainActivity : Activity() {
     private var lastScreen: Screen? = null
     private var logMonth: Calendar = Calendar.getInstance()
     private var logListMode = false
+    private var hourOpen = false
     private var day: Calendar = Calendar.getInstance().apply { add(Calendar.HOUR_OF_DAY, -6) }
     private var showDump = false
     private var callsShown = 50
@@ -147,7 +148,7 @@ class MainActivity : Activity() {
             "call" -> screen = Screen.CALL
             "calls" -> screen = Screen.CALLS
             "log" -> screen = Screen.LOG
-            "settings" -> screen = Screen.SETTINGS
+            "settings" -> { screen = Screen.SETTINGS; hourOpen = i.getBooleanExtra("hourOpen", false) }
             "trash" -> screen = Screen.TRASH
             "day" -> { day = bizToday(); dayBack = Screen.HOME; screen = Screen.DAY }
             "edit" -> {
@@ -1117,12 +1118,27 @@ class MainActivity : Activity() {
             addView(space(12))
             addView(text("하루가 바뀌는 시각", 16f, white, bold = true))
             addView(text("이 시각 전까지는 전날 운행으로 계산해요 (목표·오늘 합계·운행일지)", 12f, grey))
-            // 00시 ~ 23시, 1시간 단위 (한 줄에 6개씩 4줄)
-            for (r in 0 until 4) addView(row((r * 6 until r * 6 + 6).map { h ->
-                button("%02d시".format(h), if (dayStartHour == h) blue else innerBg) {
-                    dayStartHour = h; toast("%02d시에 하루가 바뀌어요".format(h)); render()
-                }.apply { textSize = 14f; minHeight = dp(46); minimumHeight = dp(46); minWidth = 0; minimumWidth = 0; setPadding(0, 0, 0, 0) }
-            }).apply { for (i in 0 until childCount) (getChildAt(i).layoutParams as LinearLayout.LayoutParams).apply { if (i > 0) leftMargin = dp(6) } })
+            // 누르면 아래로 00시~23시 목록이 펼쳐지고, 고르면 닫힌다
+            addView(button("%02d시  ".format(dayStartHour) + if (hourOpen) "▲" else "▼", innerBg) {
+                hourOpen = !hourOpen; render()
+            }.apply { background = rounded(innerBg, 12, line); gravity = Gravity.CENTER_VERTICAL or Gravity.START; setPadding(dp(18), 0, dp(18), 0) })
+            if (hourOpen) addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(0xFF2A2A2E.toInt(), 12, line)
+                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(4) }
+                for (h in 0 until 24) {
+                    if (h > 0) addView(View(this@MainActivity).apply { setBackgroundColor(line) },
+                        LinearLayout.LayoutParams(MATCH_PARENT, 1).apply { leftMargin = dp(14); rightMargin = dp(14) })
+                    addView(TextView(this@MainActivity).apply {
+                        text = "%02d시".format(h) + if (h == dayStartHour) "  ✓" else ""
+                        textSize = 16f; setTextColor(if (h == dayStartHour) blue else white)
+                        if (h == dayStartHour) setTypeface(typeface, Typeface.BOLD)
+                        gravity = Gravity.CENTER_VERTICAL; setPadding(dp(18), 0, dp(18), 0)
+                        minHeight = dp(46)
+                        setOnClickListener { dayStartHour = h; hourOpen = false; toast("%02d시에 하루가 바뀌어요".format(h)); render() }
+                    })
+                }
+            })
         })
 
         root.addView(card().apply {
