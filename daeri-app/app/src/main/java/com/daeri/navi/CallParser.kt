@@ -97,6 +97,7 @@ object CallParser {
     fun parse(texts: List<String>, source: String = "", allowFreeText: Boolean = true): CallInfo? {
         val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
+        if (isListScreen(lines)) return null
         val rec = lines.any { "추천가" in norm(it) }
         val partner = lines.any { "제휴" in norm(it) }
         // 콜카드에 시간이 적혀 있으면 그대로 쓴다
@@ -260,6 +261,17 @@ object CallParser {
         return stops.joinToString(" → ")
     }
 
+    /**
+     * 콜 '목록' 화면인지: 결제줄('현금 | 확정')이나 거리줄('0.4km')이 여러 개면 목록.
+     * 단 [넘기기] 버튼이 있으면 목록 위에 뜬 콜카드이므로 목록으로 보지 않는다.
+     */
+    fun isListScreen(lines: List<String>): Boolean {
+        if (lines.any { norm(it) == "넘기기" }) return false
+        val payLines = lines.count { l -> norm(l).let { "|확정" in it || "|미확정" in it } }
+        val distLines = lines.count { Regex("""^\d+(\.\d+)?\s*k?m\b""", RegexOption.IGNORE_CASE).containsMatchIn(it.trim()) }
+        return payLines >= 2 || distLines >= 2
+    }
+
     /** 대리 앱 메뉴·결제 글자인지 (주소가 아님) */
     fun isMenuText(t: String): Boolean = NOT_ADDR.any { it in norm(t) }
 
@@ -307,7 +319,9 @@ object CallParser {
         // 주소가 처음 나온 뒤에 오는 '약 N분 운행'·태그·결제 줄을 카드 주소의 끝으로 본다 (맨 위 '제휴' 표시는 무시)
         val a0 = lines.indexOfFirst { isAddrLike(it) }
         if (a0 < 0) return null
-        val k = (a0 until lines.size).firstOrNull { i -> lines[i].let { l -> DRIVE_MIN.matches(l.trim()) || endWords.any { it in norm(l) } } } ?: return null
+        // 카드에만 있는 '약 N분 운행'이 있으면 그 줄이 기준 (뒤에 깔린 목록 글자와 섞이지 않게)
+        val driveIdx = (a0 until lines.size).firstOrNull { DRIVE_MIN.matches(lines[it].trim()) }
+        val k = driveIdx ?: (a0 until lines.size).firstOrNull { i -> lines[i].let { l -> endWords.any { it in norm(l) } } } ?: return null
         if (k < 1) return null
         val body = ArrayList<String>()
         var i = k - 1

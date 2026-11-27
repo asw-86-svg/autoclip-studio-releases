@@ -330,6 +330,15 @@ class CallParserTest {
         assertTrue(c.destRaw, c.destRaw.contains("광주오포금강KCC아파트"))
     }
 
+    @Test fun 카카오_콜목록은_수집안함() {
+        val c = CallParser.parse(listOf("콜 대기", "콜 수요 지도", "리스트 설정", "프로 단독배정 적용중", "내위치 : 경기 수원시 팔달구 인계동 1122-14",
+            "프로 단독배정 35분 29초", "출발지", "도착지", "실제수익",
+            "0.4km", "인계동", "화성시동탄구 장지동 동…", "콜받도착 | 29분", "24,000", "현금 | 확정",
+            "0.7km", "인계동", "경기 화성 동탄구 산척동", "콜받도착 | 29분", "25,600", "카드 | 확정",
+            "정렬옵션", "새로고침"), "카카오T 대리", allowFreeText = false)
+        assertTrue(c == null)
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))
