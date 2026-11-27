@@ -256,9 +256,10 @@ class MainActivity : Activity() {
             if (c.originRaw.isNotEmpty() && c.originRaw != c.originDisplay) addView(text(c.originRaw, 12f, grey))
             val oLabel = text("", 12f, 0xFF7FB2FF.toInt()); addView(oLabel)
             addView(row(listOf(
-                button("카카오맵\n출발지로", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries) },
-                button("네이버\n출발지로", naverGreen) { navigate(App.NAVER, c.originQueries) },
+                button("카카오맵\n🚌 출발지로", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
+                button("네이버\n🚌 출발지로", naverGreen) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
             )))
+            addView(text("출발지까지는 대중교통 길찾기로 열려요 (지도앱에서 도보·택시로 바꿀 수 있어요)", 12f, grey))
             addView(space(10))
 
             addView(text("🔴 도착지", 14f, red, bold = true))
@@ -685,10 +686,10 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun navigate(app: App, queries: List<String>) {
+    private fun navigate(app: App, queries: List<String>, mode: Mode = Mode.CAR) {
         if (queries.isEmpty()) { toast("주소가 없어요"); return }
         resolveAsync(queries) { pt ->
-            if (pt != null) MapLauncher.route(this, app, null, pt)
+            if (pt != null) MapLauncher.route(this, app, null, pt, mode)
             else { toast("정확한 위치를 못 찾아 지도 검색으로 엽니다"); MapLauncher.search(this, app, queries.first()) }
         }
     }
