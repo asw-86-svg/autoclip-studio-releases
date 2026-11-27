@@ -20,7 +20,10 @@ object Geo {
     /** 후보들을 순서대로 시도해서 처음 찾은 좌표를 돌려준다. 네트워크를 쓰므로 백그라운드에서 호출. */
     fun resolve(ctx: Context, queries: List<String>): Pt? {
         val key = ctx.kakaoKey.trim()
+        // 업체/건물 이름이 있는 콜이면 "화성시 만세구" 같은 동네 이름 후보로 대충 찍지 않는다
+        val specific = queries.firstOrNull()?.let { !isAreaOnly(it) } == true
         for (q in queries.take(5)) {
+            if (specific && isAreaOnly(q)) continue
             val ck = "$key|$q"
             cache[ck]?.let { return it }
             if (ck in misses) continue
@@ -37,8 +40,22 @@ object Geo {
         val a = Geocoder(ctx, Locale.KOREA).getFromLocationName(q, 1)?.firstOrNull() ?: return null
         // 한국 범위를 벗어난 엉뚱한 결과는 버림
         if (a.latitude !in 33.0..39.0 || a.longitude !in 124.0..132.0) return null
-        Pt(a.latitude, a.longitude, a.getAddressLine(0) ?: q, q)
+        val line = a.getAddressLine(0) ?: q
+        // "경기도 화성시 팔탄면" 처럼 번지 없이 동네 이름에서 끝나면 대략적인 위치일 뿐이다.
+        // 검색어가 업체/건물 이름이었다면 이 결과는 버리고 지도앱 검색에 맡긴다.
+        if (isAreaOnly(line) && !isAreaOnly(q)) return null
+        Pt(a.latitude, a.longitude, line, q)
     }.getOrNull()
+
+    private val AREA_END = Regex("""(시|군|구|읍|면|동|리|가|도|대한민국)$""")
+
+    /** 숫자(번지) 없이 행정구역 이름으로만 이루어졌는지 */
+    fun isAreaOnly(text: String): Boolean {
+        val toks = text.trim().split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        return toks.isNotEmpty() && text.none { it.isDigit() } && toks.all { AREA_END.containsMatchIn(it) || it in PROVINCE_SHORT }
+    }
+
+    private val PROVINCE_SHORT = setOf("서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주")
 
     private fun kakao(key: String, kind: String, q: String): Pt? = runCatching {
         val url = URL("https://dapi.kakao.com/v2/local/search/$kind.json?size=1&query=" + URLEncoder.encode(q, "UTF-8"))

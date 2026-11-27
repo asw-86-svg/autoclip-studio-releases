@@ -177,8 +177,8 @@ class MainActivity : Activity() {
             })
 
             // 지도에서 찾은 실제 위치를 미리 표시 (주소가 맞는지 확인용)
-            resolveAsync(c.originQueries) { oLabel.text = it?.let { p -> "📍 지도 위치: ${p.label}" } ?: "📍 정확한 위치를 못 찾음 → 지도앱 검색으로 열림" }
-            resolveAsync(c.destQueries) { dLabel.text = it?.let { p -> "📍 지도 위치: ${p.label}" } ?: "📍 정확한 위치를 못 찾음 → 지도앱 검색으로 열림" }
+            resolveAsync(c.originQueries) { oLabel.text = it?.let { p -> "📍 지도 위치: ${p.label}" } ?: "📍 정확한 위치를 못 찾음 → 누르면 지도앱 검색창에 주소가 들어간 채로 열려요 (카카오 키를 넣으면 더 정확해져요)" }
+            resolveAsync(c.destQueries) { dLabel.text = it?.let { p -> "📍 지도 위치: ${p.label}" } ?: "📍 정확한 위치를 못 찾음 → 누르면 지도앱 검색창에 주소가 들어간 채로 열려요 (카카오 키를 넣으면 더 정확해져요)" }
         })
     }
 
