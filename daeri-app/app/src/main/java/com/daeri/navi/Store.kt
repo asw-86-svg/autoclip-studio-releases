@@ -151,10 +151,14 @@ object Store {
         fun bad(src: String) = src.isBlank() || okNames.none { it in src } ||
             "anthropic" in src.lowercase() || "claude" in src.lowercase()
         val hist = history(ctx)
-        val keepHist = hist.filterNot { bad(it.source) }
+        val keepHist = hist.filterNot { bad(it.source) || CallParser.isMenuText(it.originRaw) || CallParser.isMenuText(it.destRaw) }
         if (keepHist.size != hist.size) writeHistory(ctx, keepHist)
         val tr = trips(ctx)
-        val keepTrips = tr.filterNot { bad(it.program.ifEmpty { it.memo }) && it.callKey.isNotEmpty() }
+        val keepTrips = tr.filterNot {
+            it.callKey.isNotEmpty() && (bad(it.program.ifEmpty { it.memo }) ||
+                // 카카오 메뉴 글자를 콜로 잘못 읽은 기록 ("콜 대기 콜 수요 지도 → 리스트 설정")
+                CallParser.isMenuText(it.origin) || CallParser.isMenuText(it.dest))
+        }
         if (keepTrips.size != tr.size) saveTrips(ctx, keepTrips)
         current(ctx)?.let { if (bad(it.source)) p(ctx).edit().remove("current").apply() }
         val dumps = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())

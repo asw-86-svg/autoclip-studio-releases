@@ -207,6 +207,9 @@ object CallParser {
     private val NOT_ADDR = listOf("수익", "확정", "포인트", "정산", "잔액", "충전", "수수료", "콜받", "카드|", "현금|", "결제", "고객과",
         // 카카오T 대리 화면 메뉴 글자
         "콜대기", "콜수요", "리스트설정", "콜리스트", "정렬옵션", "새로고침", "콜찾기", "귀가지원", "단독배정", "선호도착", "나의예약", "이벤트", "메뉴")
+    /** 대리 앱 메뉴·결제 글자인지 (주소가 아님) */
+    fun isMenuText(t: String): Boolean = NOT_ADDR.any { it in norm(t) }
+
     private val MONEY = Regex("""\d{1,3}(,\d{3})+""")
 
     private fun isAddrLike(l: String): Boolean {

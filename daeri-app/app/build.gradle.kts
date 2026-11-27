@@ -11,8 +11,8 @@ android {
         applicationId = "com.daeri.navi"
         minSdk = 26
         targetSdk = 34
-        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "30").toInt()
-        versionName = "0.30." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "31").toInt()
+        versionName = "0.31." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
     // 항상 같은 키로 서명해야 새 버전을 덮어서 설치할 수 있다
@@ -35,8 +35,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    // 화면 캡처 확인용 (SCREENSHOTS=1 일 때만 실행)
+    testImplementation("org.robolectric:robolectric:4.13")
 }

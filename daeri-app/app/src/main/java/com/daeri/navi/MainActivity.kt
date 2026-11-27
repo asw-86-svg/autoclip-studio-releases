@@ -123,7 +123,18 @@ class MainActivity : Activity() {
     private fun go(s: Screen) { screen = s; render() }
 
     private fun handleIntent(i: Intent?) {
-        if (i?.getStringExtra("open") == "call") screen = Screen.CALL
+        when (i?.getStringExtra("open")) {
+            "call" -> screen = Screen.CALL
+            "calls" -> screen = Screen.CALLS
+            "log" -> screen = Screen.LOG
+            "settings" -> screen = Screen.SETTINGS
+            "day" -> { day = Calendar.getInstance(); dayBack = Screen.HOME; screen = Screen.DAY }
+            "edit" -> {
+                val id = i.getLongExtra("trip", -1L)
+                editing = Store.trips(this).firstOrNull { it.id == id }
+                editBack = Screen.DAY; screen = Screen.EDIT
+            }
+        }
         if (i?.action == Intent.ACTION_SEND) {
             i.getStringExtra(Intent.EXTRA_TEXT)?.let { if (parseAndSet(it, "공유")) screen = Screen.CALL }
         }
@@ -698,7 +709,33 @@ class MainActivity : Activity() {
         // ---- 요금 · 비용 ----
         root.addView(sectionTitle("요금 · 비용"))
         val fare = numEdit(t?.fare).apply { setTextColor(blue) }
-        val program = edit("대리 앱 (예: 카카오대리)").apply { setText(t?.program.orEmpty()) }
+        // 프로그램: 누르면 목록에서 고르기
+        val program = edit("눌러서 선택").apply {
+            setText(t?.program.orEmpty())
+            isFocusable = false; isCursorVisible = false; isLongClickable = false
+            setCompoundDrawablesWithIntrinsicBounds(null, null, null, null)
+        }
+        val programRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = rounded(0xFF2A2A2E.toInt(), 10)
+            program.background = null
+            addView(program, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(text("▾", 18f, grey).apply { setPadding(0, 0, dp(14), 0) })
+        }
+        val pick = View.OnClickListener {
+            val names = arrayOf("카카오대리", "로지", "콜마너", "I-Driver", "직접 입력…")
+            AlertDialog.Builder(this).setTitle("프로그램").setItems(names) { _, i ->
+                if (i < names.size - 1) program.setText(names[i])
+                else {
+                    val et = edit("프로그램 이름").apply { setText(program.text) }
+                    AlertDialog.Builder(this).setTitle("직접 입력")
+                        .setView(LinearLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(et) })
+                        .setPositiveButton("확인") { _, _ -> program.setText(et.text.toString().trim()) }
+                        .setNegativeButton("취소", null).show()
+                }
+            }.show()
+        }
+        program.setOnClickListener(pick); programRow.setOnClickListener(pick)
         val viaFee = numEdit(t?.viaFee)
         val tip = numEdit(t?.tip)
         val commission = numEdit(t?.commission).apply { setTextColor(red) }
@@ -717,14 +754,7 @@ class MainActivity : Activity() {
 
         root.addView(card().apply {
             addView(formRow("요금", fare))
-            addView(formRow("프로그램", program))
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(dp(80), 0, 0, 0)
-                listOf("카카오대리", "로지", "콜마너", "I-Driver").forEach { n ->
-                    addView(chip(n) { program.setText(n) })
-                }
-            })
+            addView(formRow("프로그램", programRow))
             addView(formDivider())
             addView(formRow("경유비", row(listOf(viaFee, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(viaFee, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(viaFee, 5000) }), weights = listOf(1.6f, 1f, 1f))))
             addView(formRow("팁", row(listOf(tip, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(tip, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(tip, 5000) }), weights = listOf(1.6f, 1f, 1f))))
@@ -815,9 +845,13 @@ class MainActivity : Activity() {
 
     private fun formRow(label: CharSequence, v: View) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
-        addView(text(label, 15f, 0xFFBBBBC0.toInt(), bold = true), LinearLayout.LayoutParams(dp(80), WRAP_CONTENT))
-        if (v.layoutParams is LinearLayout.LayoutParams) (v.layoutParams as LinearLayout.LayoutParams).topMargin = 0
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(8) }
+        addView(text(label, 15f, 0xFFBBBBC0.toInt(), bold = true).apply { gravity = Gravity.CENTER_VERTICAL },
+            LinearLayout.LayoutParams(dp(80), WRAP_CONTENT))
+        // 이름과 입력칸 높이를 맞추려고 안쪽 위 여백을 없앤다
+        if (v is LinearLayout && v.orientation == LinearLayout.HORIZONTAL) {
+            for (i in 0 until v.childCount) (v.getChildAt(i).layoutParams as? LinearLayout.LayoutParams)?.topMargin = 0
+        }
         addView(v, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
     }
 
@@ -839,9 +873,8 @@ class MainActivity : Activity() {
     }
 
     private fun chip(label: String, onClick: () -> Unit) = TextView(this).apply {
-        text = label; textSize = 12f; setTextColor(0xFFCCCCCC.toInt())
-        setPadding(dp(10), dp(6), dp(10), dp(6)); background = rounded(innerBg, 14, line)
-        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { rightMargin = dp(6); topMargin = dp(6) }
+        text = label; textSize = 12f; setTextColor(0xFFCCCCCC.toInt()); maxLines = 1; isSingleLine = true
+        setPadding(dp(2), dp(8), dp(2), dp(8)); background = rounded(innerBg, 14, line)
         setOnClickListener { onClick() }
     }
 
@@ -1187,11 +1220,12 @@ class MainActivity : Activity() {
 
     private fun edit(hint: String, multi: Boolean = false) = EditText(this).apply {
         this.hint = hint; setHintTextColor(0xFF777777.toInt()); setTextColor(white); textSize = 15f
-        gravity = Gravity.TOP or Gravity.START
+        gravity = if (multi) Gravity.TOP or Gravity.START else Gravity.CENTER_VERTICAL or Gravity.START
         if (multi) { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 3 }
         else inputType = InputType.TYPE_CLASS_TEXT
-        background = rounded(0xFF2A2A2E.toInt(), 8)
-        setPadding(dp(10), dp(10), dp(10), dp(10))
+        background = rounded(0xFF2A2A2E.toInt(), 10)
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        minHeight = dp(50)
         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = dp(6) }
     }
 }
