@@ -233,7 +233,11 @@ object Store {
     }
 
     /** 수락된 콜(상세배차정보·배정완료)을 읽으면 운행일지에 자동 기록. 같은 콜은 12시간 안에 한 번만. */
+    /** 대리 요금이 이보다 낮으면 콜이 아닌 화면을 잘못 읽은 것으로 보고 자동으로 넣지 않는다 */
+    const val MIN_FARE = 5000
+
     private fun recordAccepted(ctx: Context, c: CallInfo) = synchronized(tripLock) {
+        if (CallParser.won(c.fare) in 1 until MIN_FARE) return
         val list = trips(ctx)
         if (list.any { it.callKey == c.key && abs(it.time - c.capturedAt) < 12 * 3600_000L }) return
         val fare = CallParser.won(c.fare)
@@ -260,7 +264,13 @@ object Store {
         val hist = history(ctx)
         val keepHist = hist.filterNot { bad(it.source) || CallParser.isMenuText(it.originRaw) || CallParser.isMenuText(it.destRaw) }
         if (keepHist.size != hist.size) writeHistory(ctx, keepHist)
-        // 운행일지·자동운행기록은 자동 청소에서 절대 지우지 않는다 (받은 콜 목록만 청소)
+        // 운행일지는 자동 청소에서 지우지 않는다. 단, 일지에 안 넣은 자동 카드 중 요금이 5,000원 미만인
+        // 잘못 잡힌 것만 휴지통으로 옮긴다 (되살릴 수 있음)
+        synchronized(tripLock) {
+            val tr = trips(ctx)
+            val (bogus, keep) = tr.partition { !it.confirmed && it.callKey.isNotEmpty() && it.fare in 1 until MIN_FARE }
+            if (bogus.isNotEmpty()) { moveToTrash(ctx, bogus, "요금이 너무 낮아 잘못 잡힌 것으로 보임"); saveTrips(ctx, keep) }
+        }
         current(ctx)?.let { if (bad(it.source)) p(ctx).edit().remove("current").apply() }
         val dumps = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())
         val keepDumps = JSONArray()

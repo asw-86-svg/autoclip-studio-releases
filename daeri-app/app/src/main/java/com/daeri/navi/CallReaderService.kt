@@ -126,12 +126,8 @@ class CallReaderService : AccessibilityService() {
                 runCatching { event.source?.let { collect(it, words, 0, intArrayOf(0)) } }
                 val n = words.map { it.replace(Regex("""\s+"""), "") }
                 // 버튼 하나를 누른 경우만 (카드 전체를 누르면 안쪽에 [수락] 글자가 있어도 무시)
-                if (n.size <= 3 && n.any { w -> ACCEPT_WORDS.any { it in w } && "넘기기" !in w && "거절" !in w }) bg.post { acceptCurrent(pkg, "수락 버튼") }
-                // 카카오 콜카드는 수락 버튼 이름이 [확인]인 경우가 있다 → 방금(1분 안) 뜬 카카오 콜이 있을 때만 수락으로
-                else if ("kakao" in pkg.lowercase() && n.size <= 2 && n.any { it == "확인" }) bg.post {
-                    Store.current(this)?.takeIf { it.pkg == pkg && !it.accepted && System.currentTimeMillis() - it.capturedAt < 60_000L }
-                        ?.let { acceptCurrent(pkg, "확인 버튼") }
-                }
+                // 버튼 글자가 수락 버튼 이름과 '정확히' 같을 때만 (확인·화면 글자로 짐작하지 않음)
+                if (n.size <= 2 && n.any { it in ACCEPT_WORDS }) bg.post { acceptCurrent(pkg, "수락 버튼") }
             }
             schedule(450L)
             return
@@ -155,7 +151,7 @@ class CallReaderService : AccessibilityService() {
         bg.postAtTime(scanTask, at)
     }
 
-    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "배차받기", "콜받기", "단독배정확인", "단독배정수락", "프로단독배정")
+    private val ACCEPT_WORDS = setOf("수락", "콜수락", "수락하기", "즉시배차", "단독배정확인", "단독배정수락")
     private val ASSIGNED_WORDS = listOf("배정완료", "도착알림", "고객과통화", "고객과메시지", "운행시작", "운행을시작", "배차완료")
     private val CANCEL_WORDS = listOf("취소되었습니다", "거부성공", "거부되었습니다", "배차가취소", "오더거부성공")
 
@@ -242,8 +238,6 @@ class CallReaderService : AccessibilityService() {
                 }
             }
             if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
-            // 수락한 뒤에 나오는 배정 화면이 보이면 → 방금 콜을 수락한 것으로 기록
-            else if (ASSIGNED_WORDS.any { it in n }) acceptCurrent(pkg, "배정 화면")
             if (!looks) continue
             val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
             // 자동배차 화면(로지 'N초 후 자동취소', I-Driver 'N초 자동배차 중')은 취소·거부 안 하면 배차 → 바로 기록
