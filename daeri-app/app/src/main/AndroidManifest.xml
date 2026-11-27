@@ -18,6 +18,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="nmap" />
         </intent>
+        <!-- 대리 앱 이름·아이콘을 알아보기 위해 (홈 화면에 아이콘이 있는 앱들) -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

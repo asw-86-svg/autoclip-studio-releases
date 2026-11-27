@@ -158,6 +158,13 @@ class CallParserTest {
         assertTrue(!c.accepted)
     }
 
+    @Test fun 자동읽기는_자유글_형식_안씀() {
+        // 채팅 화면 같은 일반 글은 자동 읽기에서 콜로 만들지 않는다
+        val chat = listOf("카카오T 대리 출발·도착 읽기 → 운행일지 기록", "출발: 어쩌고", "도착: 저쩌고")
+        assertTrue(CallParser.parse(chat, "x", allowFreeText = false) == null)
+        assertNotNull(CallParser.parse(chat, "x", allowFreeText = true))
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))

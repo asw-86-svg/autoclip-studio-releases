@@ -80,6 +80,7 @@ class MainActivity : Activity() {
             addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
             addView(footer, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
+        Store.cleanupJunk(this)
         handleIntent(intent)
     }
 
@@ -323,11 +324,18 @@ class MainActivity : Activity() {
                 setOnClickListener { openCall(h) }
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    addView(iconBox(appEmoji(h.source)))
+                    addView(appIcon(h))
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-                        addView(text(h.source + if (h.accepted) "" else " · 수락 전", 18f, white, bold = true))
-                        addView(text(fmt.format(Date(h.capturedAt)), 14f, grey))
+                        addView(text(h.source, 18f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            addView(text(fmt.format(Date(h.capturedAt)), 14f, grey))
+                            if (!h.accepted) addView(badge("수락 전", innerBg, grey).apply {
+                                textSize = 11f
+                                layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
+                            })
+                        })
                     }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     if (h.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.END
@@ -340,12 +348,13 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(10), dp(10), dp(10))
                     background = rounded(innerBg, 12)
-                    addView(addressBox(h, raw = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                    addView(TextView(this@MainActivity).apply {
-                        text = "🗺"; textSize = 22f; gravity = Gravity.CENTER
-                        background = rounded(cardBg, 12, line)
+                    addView(addressBox(h, oneLine = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(android.widget.ImageView(this@MainActivity).apply {
+                        setImageResource(R.drawable.ic_map)
+                        scaleType = android.widget.ImageView.ScaleType.CENTER
+                        background = rounded(cardBg, 14, line)
                         setOnClickListener { openCall(h) }
-                    }, LinearLayout.LayoutParams(dp(52), dp(52)))
+                    }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(8) })
                 })
             })
         }
@@ -355,6 +364,18 @@ class MainActivity : Activity() {
         Store.setCurrent(this, h)
         CallReaderService.instance?.showBubble()
         go(Screen.CALL)
+    }
+
+    /** 설치된 대리 앱의 진짜 아이콘 (없으면 글자 아이콘) */
+    private fun appIcon(h: CallInfo): View {
+        val icon = runCatching { if (h.pkg.isNotEmpty()) packageManager.getApplicationIcon(h.pkg) else null }.getOrNull()
+            ?: return iconBox(appEmoji(h.source))
+        return android.widget.ImageView(this).apply {
+            setImageDrawable(icon)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = rounded(innerBg, 16, line)
+            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+        }
     }
 
     private fun appEmoji(source: String) = when {
@@ -790,13 +811,16 @@ class MainActivity : Activity() {
     }
 
     /** 출발(파란 점) / 도착(빨간 점) 두 줄 */
-    private fun addressBox(c: CallInfo, raw: Boolean = false) = LinearLayout(this).apply {
+    private fun addressBox(c: CallInfo, oneLine: Boolean = false) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(0, dp(4), 0, dp(4))
-        val o = (if (raw) c.originRaw.replace('\n', ' ').ifEmpty { c.originDisplay } else c.originDisplay).ifEmpty { "(없음)" }
-        val d = (if (raw) c.destRaw.replace('\n', ' ').ifEmpty { c.destDisplay } else c.destDisplay).ifEmpty { "(없음)" }
-        addView(text(dot(blue, "●  $o"), 15f, white))
-        addView(text(dot(red, "●  $d"), 15f, white))
+        val o = c.originDisplay.ifEmpty { c.originRaw.replace('\n', ' ') }.ifEmpty { "(없음)" }
+        val d = c.destDisplay.ifEmpty { c.destRaw.replace('\n', ' ') }.ifEmpty { "(없음)" }
+        listOf(dot(blue, "●  $o"), dot(red, "●  $d")).forEach { s ->
+            addView(text(s, 15f, white).apply {
+                if (oneLine) { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(5), 0, dp(5)) }
+            })
+        }
     }
 
     /** 맨 앞 ● 만 색칠 */

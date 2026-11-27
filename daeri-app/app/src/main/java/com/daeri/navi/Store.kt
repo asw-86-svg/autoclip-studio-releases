@@ -74,6 +74,29 @@ object Store {
         ))
     }
 
+    /**
+     * 예전 버전이 대리 앱이 아닌 화면(채팅 등)을 콜로 잘못 읽어 남긴 기록을 지운다.
+     * 앱 이름을 못 찾아 'com.xxx.yyy' 같은 패키지 이름이 출처로 남은 것들.
+     */
+    fun cleanupJunk(ctx: Context) {
+        val junk = Regex("""^[a-z0-9_]+(\.[a-z0-9_]+)+$""")
+        fun bad(src: String) = junk.matches(src.trim()) || "anthropic" in src || "claude" in src.lowercase()
+        val hist = history(ctx)
+        val keepHist = hist.filterNot { bad(it.source) }
+        if (keepHist.size != hist.size) {
+            val arr = JSONArray().apply { keepHist.forEach { put(toJson(it, trimNotes = true)) } }
+            p(ctx).edit().putString("history", arr.toString()).apply()
+        }
+        val tr = trips(ctx)
+        val keepTrips = tr.filterNot { bad(it.memo) }
+        if (keepTrips.size != tr.size) saveTrips(ctx, keepTrips)
+        current(ctx)?.let { if (bad(it.source)) p(ctx).edit().remove("current").apply() }
+        val dumps = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())
+        val keepDumps = JSONArray()
+        for (i in 0 until dumps.length()) dumps.getJSONObject(i).let { if (!bad(it.optString("app"))) keepDumps.put(it) }
+        p(ctx).edit().putString("dumps", keepDumps.toString()).apply()
+    }
+
     // ---------------- 설정 ----------------
     var Context.homeAddress: String
         get() = p(this).getString("home", "").orEmpty()
@@ -110,7 +133,7 @@ object Store {
         put("source", c.source); put("originRaw", c.originRaw); put("destRaw", c.destRaw)
         put("oq", JSONArray(c.originQueries)); put("dq", JSONArray(c.destQueries))
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
-        put("accepted", c.accepted); put("deposit", c.deposit)
+        put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -121,7 +144,7 @@ object Store {
         originQueries = o.optJSONArray("oq")?.strings().orEmpty(),
         destQueries = o.optJSONArray("dq")?.strings().orEmpty(),
         fare = o.optString("fare"), notes = o.optString("notes"), capturedAt = o.optLong("at"),
-        accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"),
+        accepted = o.optBoolean("accepted"), deposit = o.optString("deposit"), pkg = o.optString("pkg"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),

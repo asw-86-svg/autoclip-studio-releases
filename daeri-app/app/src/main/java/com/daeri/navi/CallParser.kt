@@ -18,6 +18,8 @@ data class CallInfo(
     val accepted: Boolean = false,
     /** 입금액(수수료) */
     val deposit: String = "",
+    /** 읽어온 앱의 패키지 이름 (아이콘 표시용) */
+    val pkg: String = "",
 ) {
     val key: String get() = "$originRaw|$destRaw"
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
@@ -71,13 +73,14 @@ object CallParser {
             "출발주소" in n || "도착주소" in n || ("수락" in n && "닫기" in n)
     }
 
-    fun parse(texts: List<String>, source: String = ""): CallInfo? {
+    /** allowFreeText=false: 자동 읽기에서는 '출발: / 도착:' 자유 글 형식은 쓰지 않는다 (채팅 등 오인 방지) */
+    fun parse(texts: List<String>, source: String = "", allowFreeText: Boolean = true): CallInfo? {
         val lines = texts.map { clean(it).trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
         return parseLabeled(lines, source)
             ?: parseKakao(lines, source)
             ?: parseOffer(lines, source)
-            ?: parseFreeText(lines.joinToString("\n"), source)
+            ?: if (allowFreeText) parseFreeText(lines.joinToString("\n"), source) else null
     }
 
     // ---------- 1. 상세배차정보 형식 (항목이름 → 다음 칸이 값) ----------

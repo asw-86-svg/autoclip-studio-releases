@@ -69,8 +69,14 @@ class CallReaderService : AccessibilityService() {
         }
     }
 
-    private fun isCallApp(pkg: String) =
-        listOf("callmaner", "logi", "kakao.driver", "kakaomobility", "daeri", "driver").any { it in pkg }
+    private val callAppCache = HashMap<String, Boolean>()
+
+    /** 대리·탁송 앱만 읽는다. 카톡·문자·브라우저·채팅앱 등은 '출발/도착' 글자가 있어도 무시 */
+    private fun isCallApp(pkg: String): Boolean = callAppCache.getOrPut(pkg) {
+        if (listOf("callmaner", "logi", "kakao.driver", "kakaomobility.driver", "daeri", "takson").any { it in pkg.lowercase() }) return@getOrPut true
+        val label = appLabel(pkg)
+        listOf("대리", "로지", "콜마너", "탁송", "기사").any { it in label }
+    }
 
     private fun scan() {
         // 지금 화면 + 다른 앱 위에 떠 있는 팝업 창까지 모두 읽는다
@@ -80,13 +86,14 @@ class CallReaderService : AccessibilityService() {
         for (root in roots.values) {
             val pkg = root.packageName?.toString().orEmpty()
             if (pkg.isEmpty() || pkg == packageName || pkg in IGNORE_PKGS) continue
+            if (!isCallApp(pkg)) continue
             val texts = ArrayList<String>()
             collect(root, texts, 0)
             if (texts.isEmpty()) continue
             val looks = CallParser.looksLikeCall(texts.joinToString("\n"))
-            if (looks || isCallApp(pkg)) Store.addDump(this, appName(pkg), texts)
+            Store.addDump(this, appName(pkg), texts)
             if (!looks) continue
-            val call = CallParser.parse(texts, appName(pkg)) ?: continue
+            val call = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
             if (call.originRaw.isBlank() && call.destRaw.isBlank()) continue
             if (call.key == Store.current(this)?.key) return
             Store.setCurrent(this, call)
