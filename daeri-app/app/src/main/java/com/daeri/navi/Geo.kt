@@ -31,6 +31,12 @@ object Geo {
         return found
     }
 
+    /** 저장해 둔 위치만 (인터넷 안 씀, 화면 그릴 때 바로 쓰는 용) */
+    fun cachedOnly(ctx: Context, queries: List<String>): Pt? {
+        val pk = queries.take(3).joinToString("|")
+        return if (pk.isBlank()) null else saved(ctx, pk)
+    }
+
     // ---- 찾은 위치 저장 (휴대폰 안, 최근 800개) ----
     private val saveLock = Any()
     private fun gp(ctx: Context) = ctx.getSharedPreferences("geo", Context.MODE_PRIVATE)

@@ -291,7 +291,7 @@ class CallReaderService : AccessibilityService() {
     }
 
     /** 카카오T 대리 콜은 설정에서 켜지 않으면 말풍선을 바꾸지 않는다 (콜카드에 지도가 이미 나옴) */
-    private fun bubbleFor(pkg: String) = kakaoBubble || "kakao" !in pkg.lowercase()
+    fun bubbleFor(pkg: String) = kakaoBubble || "kakao" !in pkg.lowercase()
 
     /** 마지막으로 콜을 본 뒤 5분 동안 말풍선 내용 유지, 그 뒤엔 작은 '출/도'로 */
     // 설정한 시간(10초/30초/1분/5분)이 지나면 말풍선을 숨기고, 다음 콜이 오면 다시 띄운다

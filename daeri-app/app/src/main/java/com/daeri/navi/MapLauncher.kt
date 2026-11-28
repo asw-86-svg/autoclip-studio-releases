@@ -12,7 +12,7 @@ object MapLauncher {
     const val NAVER = "com.nhn.android.nmap"
 
     enum class App { KAKAO, NAVER }
-    enum class Mode { CAR, TRANSIT }
+    enum class Mode { CAR, TRANSIT, WALK }
 
     private fun enc(s: String) = Uri.encode(s)
 
@@ -23,10 +23,10 @@ object MapLauncher {
                 append("kakaomap://route?")
                 from?.let { append("sp=${it.lat},${it.lng}&") }
                 append("ep=${to.lat},${to.lng}&by=")
-                append(if (mode == Mode.CAR) "CAR" else "PUBLICTRANSIT")
+                append(when (mode) { Mode.CAR -> "CAR"; Mode.WALK -> "FOOT"; Mode.TRANSIT -> "PUBLICTRANSIT" })
             }
             App.NAVER -> buildString {
-                append("nmap://route/").append(if (mode == Mode.CAR) "car" else "public").append("?")
+                append("nmap://route/").append(when (mode) { Mode.CAR -> "car"; Mode.WALK -> "walk"; Mode.TRANSIT -> "public" }).append("?")
                 from?.let { append("slat=${it.lat}&slng=${it.lng}&sname=${enc(it.label)}&") }
                 append("dlat=${to.lat}&dlng=${to.lng}&dname=${enc(to.label)}&appname=${ctx.packageName}")
             }

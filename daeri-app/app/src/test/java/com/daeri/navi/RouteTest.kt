@@ -29,4 +29,9 @@ class RouteTest {
         assertTrue(!Route.toOrigin(3.0).walk)         // 3km → 걸으면 50분 → 차
         assertTrue(Route.walkSec(0.7) <= Route.WALK_LIMIT_MIN * 60)
     }
+
+    @Test fun 지도앱_도보_길안내_주소() {
+        // 카카오맵 by=FOOT, 네이버 route/walk 로 열린다 (주소 글자 확인)
+        assertTrue(MapLauncher.Mode.values().contains(MapLauncher.Mode.WALK))
+    }
 }

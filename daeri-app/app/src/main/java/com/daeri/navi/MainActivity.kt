@@ -236,7 +236,7 @@ class MainActivity : Activity() {
             return false
         }
         Store.setCurrent(this, c)
-        CallReaderService.instance?.let { it.showBubble(); it.bubbleEta(c) }
+        CallReaderService.instance?.let { if (it.bubbleFor(c.pkg)) { it.showBubble(); it.bubbleEta(c) } }
         return true
     }
 
@@ -581,8 +581,8 @@ class MainActivity : Activity() {
             addView(pair(text(dot(blue, "●  출발지"), 12f, blue, bold = true), text(dot(red, "●  도착지"), 12f, red, bold = true), 8))
             addView(pair(addrText(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }), addrText(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }), 2))
             addView(pair(
-                navGroup(blue, navBtn(MapLauncher.KAKAO, "🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
-                    navBtn(MapLauncher.NAVER, "🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) }) { callWeb?.evaluateJavascript("focusPoint('o')", null) },
+                navGroup(blue, navBtn(MapLauncher.KAKAO, originIcon(c), "카카오", kakaoYellow, black) { toOrigin(App.KAKAO, c) },
+                    navBtn(MapLauncher.NAVER, originIcon(c), "네이버", naverGreen, white) { toOrigin(App.NAVER, c) }) { callWeb?.evaluateJavascript("focusPoint('o')", null) },
                 navGroup(red, navBtn(MapLauncher.KAKAO, "🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
                     navBtn(MapLauncher.NAVER, "🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) }) { callWeb?.evaluateJavascript("focusPoint('d')", null) },
                 6))
@@ -884,7 +884,7 @@ class MainActivity : Activity() {
 
     private fun openCall(h: CallInfo) {
         Store.setCurrent(this, h)
-        CallReaderService.instance?.let { it.showBubble(); it.bubbleEta(h) }
+        CallReaderService.instance?.let { if (it.bubbleFor(h.pkg)) { it.showBubble(); it.bubbleEta(h) } }
         go(Screen.CALL)
     }
 
@@ -1772,6 +1772,29 @@ class MainActivity : Activity() {
         resolveAsync(queries) { pt ->
             if (pt != null) MapLauncher.route(this, app, null, pt, mode)
             else { toast("정확한 위치를 못 찾아 지도 검색으로 엽니다"); MapLauncher.search(this, app, queries.first()) }
+        }
+    }
+
+    /** 출발지 버튼 표시: 걸어갈 거리면 🚶, 아니면 🚌 (모르면 🚌) */
+    private fun originIcon(c: CallInfo): String {
+        if (c.walkMin > 0) return if (c.walkMin <= Route.WALK_LIMIT_MIN) "🚶" else "🚌"
+        val here = Loc.lastPt(this) ?: return "🚌"
+        val o = Geo.cachedOnly(this, c.originQueries) ?: return "🚌"
+        return if (Route.walkSec(Route.straightKm(here, o)) <= Route.WALK_LIMIT_MIN * 60) "🚶" else "🚌"
+    }
+
+    /** 출발지까지: 걸어서 20분 이하면 도보 길안내, 넘으면 대중교통 (콜카드 도보 시간 → 없으면 내 위치로 계산) */
+    private fun toOrigin(app: App, c: CallInfo) {
+        if (c.originQueries.isEmpty()) { toast("주소가 없어요"); return }
+        resolveAsync(c.originQueries) { pt ->
+            if (pt == null) { toast("정확한 위치를 못 찾아 지도 검색으로 엽니다"); MapLauncher.search(this, app, c.originQueries.first()); return@resolveAsync }
+            val here = Loc.lastPt(this)
+            val walk = when {
+                c.walkMin > 0 -> c.walkMin <= Route.WALK_LIMIT_MIN
+                here != null -> Route.walkSec(Route.straightKm(here, pt)) <= Route.WALK_LIMIT_MIN * 60
+                else -> false
+            }
+            MapLauncher.route(this, app, null, pt, if (walk) Mode.WALK else Mode.TRANSIT)
         }
     }
 
