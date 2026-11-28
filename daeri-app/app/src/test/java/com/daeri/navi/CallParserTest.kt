@@ -274,6 +274,7 @@ class CallParserTest {
         assertEquals("경기 용인시 기흥구 서천동로91번길 8-11", c.destQueries.first())
         assertEquals(16800, CallParser.won(c.fare))
         assertTrue(!c.accepted)
+        assertEquals("프로 단독배정", c.solo)
     }
 
     @Test fun 카카오_단독배정_추천가() {
@@ -292,6 +293,7 @@ class CallParserTest {
             "카카오T 대리", allowFreeText = false)!!
         assertTrue(c.partner)
         assertTrue(!c.recommended)
+        assertEquals("단독배정", c.solo)
         assertEquals(36000, CallParser.won(c.fare))
         assertTrue(c.destQueries.first(), c.destQueries.first().contains("원삼면"))
     }
@@ -346,6 +348,7 @@ class CallParserTest {
             "카카오T 대리", allowFreeText = false)!!
         assertTrue(c.accepted)
         assertEquals(32000, CallParser.won(c.fare))
+        assertEquals("", c.solo)
         assertEquals("가락동 다농마트", c.originRaw)
         assertEquals("경기 수원시 영통구 매영로 366", c.destQueries.first())
     }

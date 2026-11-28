@@ -95,7 +95,7 @@ class ScreenshotTest {
             spm.setApplicationIcon(pkg, android.graphics.drawable.BitmapDrawable(ctx.resources, bmp))
         }
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
-            listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
+            listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true, solo = "프로 단독배정"))
         shot("call_kakao", "call", 2673)
     }
 

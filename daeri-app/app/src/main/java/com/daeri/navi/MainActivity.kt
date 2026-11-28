@@ -493,6 +493,7 @@ class MainActivity : Activity() {
             addView(dash())
             addView(line("대리", "${list.count { !it.isTakson }}콜"))
             addView(line("탁송", "${list.count { it.isTakson }}콜", if (list.any { it.isTakson }) 0xFFF5A623.toInt() else white))
+            if (list.any { it.solo.isNotEmpty() }) addView(line("단독배정", "${list.count { it.solo.isNotEmpty() }}콜 (프로 ${list.count { it.solo.startsWith("프로") }})", 0xFFB79CFF.toInt()))
             addView(dash())
             if (list.isEmpty()) addView(line("운행", "0콜"))
             list.groupBy { it.program.ifBlank { "기타" } }.toList().sortedByDescending { it.second.size }.forEach { (prog, l) ->
@@ -550,14 +551,16 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(appIcon(c, size = 36))
-                addView(text(c.source, 15f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(8), 0, 0, 0) },
-                    LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { weight = 0f })
+                // 자리가 모자라면 앱 이름이 줄어들고(…), 요금은 항상 다 보이게
+                val nameTv = text(c.source, 15f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(8), 0, 0, 0) }
+                addView(nameTv, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                 addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
                     textSize = 11f; setPadding(dp(6), dp(1), dp(6), dp(1))
                     layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
                 })
                 addView(kindBadge(c.isTakson, small = true))
-                addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+                if (c.solo.isNotEmpty()) addView(soloBadge(c.solo, small = true))
+                addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(6), 1))
                 val fareWon = CallParser.won(c.fare)
                 if (c.recommended) addView(recBadge())
                 if (c.fare.isNotEmpty()) addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 20f, blue, bold = true).apply { maxLines = 1 })
@@ -840,6 +843,7 @@ class MainActivity : Activity() {
                             addView(text(h.source, 18f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
                                 LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { weight = 0f; width = WRAP_CONTENT })
                             addView(kindBadge(h.isTakson, small = true))
+                            if (h.solo.isNotEmpty()) addView(soloBadge(h.solo, small = true))
                         })
                         addView(LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -895,6 +899,13 @@ class MainActivity : Activity() {
         text = if (takson) "탁송" else "대리"; textSize = if (small) 11f else 12f; setTypeface(typeface, Typeface.BOLD)
         setTextColor(if (takson) 0xFF1A1A1A.toInt() else 0xFFBFD4FF.toInt())
         setPadding(dp(7), dp(2), dp(7), dp(2)); background = rounded(if (takson) 0xFFF5A623.toInt() else 0xFF1F3354.toInt(), 6)
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
+    }
+
+    /** 카카오 단독배정 표시 (보라): "프로단독" / "단독" */
+    private fun soloBadge(solo: String, small: Boolean = false) = TextView(this).apply {
+        text = if (solo.startsWith("프로")) "프로단독" else "단독"; textSize = if (small) 11f else 12f; setTypeface(typeface, Typeface.BOLD)
+        setTextColor(white); setPadding(dp(7), dp(2), dp(7), dp(2)); background = rounded(0xFF7B4DDB.toInt(), 6)
         layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
     }
 
@@ -1074,6 +1085,7 @@ class MainActivity : Activity() {
                             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                             addView(text(f.format(Date(t.time)), 13f, grey).apply { maxLines = 1 })
                             addView(kindBadge(t.isTakson, small = true))
+                            if (t.solo.isNotEmpty()) addView(soloBadge(t.solo, small = true))
                         })
                     }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     addView(LinearLayout(this@MainActivity).apply {
@@ -1140,6 +1152,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     addView(text(hm.format(Date(t.time)) + "  " + t.program, 15f, grey).apply { maxLines = 1 })
                     addView(kindBadge(t.isTakson, small = true))
+                    if (t.solo.isNotEmpty()) addView(soloBadge(t.solo, small = true))
                     addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(text("순익 ${won(t.net)}", 17f, white, bold = true))
                 })
@@ -1173,7 +1186,7 @@ class MainActivity : Activity() {
         return Store.trips(this).filter { it.confirmed }.filter { t ->
             val biz = t.time - dayStartHour * 3600_000L
             val hay = listOf(ymd.format(Date(biz)), md.format(Date(biz)), t.origin, t.via, t.dest, t.program, t.memo,
-                t.fare.toString(), t.net.toString(), if (t.isTakson) "탁송" else "대리", t.recvArea).joinToString(" ").lowercase().replace(",", "")
+                t.fare.toString(), t.net.toString(), if (t.isTakson) "탁송" else "대리", t.recvArea, t.solo, if (t.solo.isNotEmpty()) "단독" else "").joinToString(" ").lowercase().replace(",", "")
             // 띄어쓰기 차이("다농 마트" / "다농마트")도 찾도록 공백 없는 것도 같이 본다
             val compact = hay.replace(" ", "")
             words.all { it in hay || it in compact }
@@ -1200,6 +1213,7 @@ class MainActivity : Activity() {
                         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                         addView(text(f.format(Date(t.time)) + "  " + t.program, 13f, grey).apply { maxLines = 1 })
                         addView(kindBadge(t.isTakson, small = true))
+                        if (t.solo.isNotEmpty()) addView(soloBadge(t.solo, small = true))
                         addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
                         addView(text("${won(t.fare)}원", 16f, blue, bold = true))
                     })
@@ -1430,7 +1444,7 @@ class MainActivity : Activity() {
                 commission = v(commission), insurance = v(insurance), transport = v(transport), transportMode = transportMode,
                 memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
                 confirmed = true, pkg = t?.pkg.orEmpty(), kind = kind,
-                recvArea = t?.recvArea.orEmpty(), recvLat = t?.recvLat ?: 0.0, recvLng = t?.recvLng ?: 0.0,
+                recvArea = t?.recvArea.orEmpty(), recvLat = t?.recvLat ?: 0.0, recvLng = t?.recvLng ?: 0.0, solo = t?.solo.orEmpty(),
             ))
             toast(if (t != null && !t.confirmed) "운행일지에 추가했어요" else "저장했어요")
             go(editBack)

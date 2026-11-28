@@ -17,6 +17,7 @@ object CallPoints {
         val recvLat: Double = 0.0, val recvLng: Double = 0.0, val recvArea: String = "",
         val oLat: Double = 0.0, val oLng: Double = 0.0, val oArea: String = "",
         val fare: Int = 0, val program: String = "", val takson: Boolean = false, val accepted: Boolean = false,
+        val solo: String = "",
     )
 
     private const val FILE = "callpoints.json"
@@ -55,6 +56,7 @@ object CallPoints {
             program = base.program.ifEmpty { Store.programName(c.source) },
             takson = base.takson || c.isTakson,
             accepted = base.accepted || c.accepted,
+            solo = base.solo.ifEmpty { c.solo },
         ))
         if (i >= 0) list[i] = merged else list += merged
         save(ctx, list)
@@ -64,27 +66,27 @@ object CallPoints {
         put("key", p.key); put("at", p.at)
         put("rLat", p.recvLat); put("rLng", p.recvLng); put("rArea", p.recvArea)
         put("oLat", p.oLat); put("oLng", p.oLng); put("oArea", p.oArea)
-        put("fare", p.fare); put("prog", p.program); put("tak", p.takson); put("ok", p.accepted)
+        put("fare", p.fare); put("prog", p.program); put("tak", p.takson); put("ok", p.accepted); put("solo", p.solo)
     }
 
     private fun from(o: JSONObject) = Point(
         o.getString("key"), o.getLong("at"),
         o.optDouble("rLat", 0.0), o.optDouble("rLng", 0.0), o.optString("rArea"),
         o.optDouble("oLat", 0.0), o.optDouble("oLng", 0.0), o.optString("oArea"),
-        o.optInt("fare"), o.optString("prog"), o.optBoolean("tak"), o.optBoolean("ok"),
+        o.optInt("fare"), o.optString("prog"), o.optBoolean("tak"), o.optBoolean("ok"), o.optString("solo"),
     )
 
     /** 나중에 엑셀 등으로 보려고: CSV 글자 */
     fun csv(ctx: Context): String {
         val f = java.text.SimpleDateFormat("yyyy-MM-dd,HH:mm,E", java.util.Locale.KOREA)
         return buildString {
-            append("날짜,시각,요일,대기위치,대기위치위도,대기위치경도,출발동네,출발위도,출발경도,요금,프로그램,종류,수락\n")
+            append("날짜,시각,요일,대기위치,대기위치위도,대기위치경도,출발동네,출발위도,출발경도,요금,프로그램,종류,수락,단독배정\n")
             all(ctx).forEach { p ->
                 append(f.format(java.util.Date(p.at))).append(',')
                 append(p.recvArea).append(',').append(p.recvLat).append(',').append(p.recvLng).append(',')
                 append(p.oArea).append(',').append(p.oLat).append(',').append(p.oLng).append(',')
                 append(p.fare).append(',').append(p.program).append(',').append(if (p.takson) "탁송" else "대리").append(',')
-                append(if (p.accepted) "수락" else "").append('\n')
+                append(if (p.accepted) "수락" else "").append(',').append(p.solo).append('\n')
             }
         }
     }

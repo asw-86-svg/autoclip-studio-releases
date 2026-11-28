@@ -32,6 +32,8 @@ data class CallInfo(
     val walkMin: Int = 0, val walkKm: Double = 0.0,
     /** 콜카드에 적힌 출발→도착 차량 시간(분) — 카카오 "약 18분 운행" */
     val driveMin: Int = 0,
+    /** 카카오 단독배정: "프로 단독배정" / "단독배정" / "" */
+    val solo: String = "",
     /** 콜을 받았을 때 내 위치 (동네 이름 + 좌표, 모르면 빈칸/0) */
     val recvArea: String = "", val recvLat: Double = 0.0, val recvLng: Double = 0.0,
 ) {
@@ -111,12 +113,18 @@ object CallParser {
         val driveMin = lines.firstNotNullOfOrNull { Regex("""약\s*(\d+)\s*분\s*운행""").find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
         // 로지 등 목록·팝업의 초록 '탁' 표시 = 탁송 콜
         val takMark = lines.any { norm(it) == "탁" || norm(it) == "(탁)" || norm(it) == "탁송" }
+        // 카카오 단독배정 카드: "프로 단독배정" 줄 / "단독배정 확인·수락" 버튼 (대기 화면의 '적용중'·남은시간 줄은 아님)
+        val solo = when {
+            lines.any { norm(it) == "프로단독배정" } -> "프로 단독배정"
+            lines.any { norm(it).let { n -> n == "단독배정확인" || n == "단독배정수락" || n == "단독배정" } } -> "단독배정"
+            else -> ""
+        }
         return parseAll(lines, source, allowFreeText)?.let {
             // 예약 탁송 "11/30(월)18:00)30일18시-19시출발/1톤스틱)부안군번영로57-1" → 앞의 예약 내용은 메모로
             val resv = listOf(it.originRaw, it.destRaw).mapNotNull { a -> reservation(a)?.second }.firstOrNull()
             val extra = listOfNotNull(if (takMark) "[탁송]" else null, resv?.let { r -> "[예약] $r" })
             it.copy(recommended = it.recommended || rec, partner = it.partner || partner,
-                walkMin = walkMin, walkKm = walkKm, driveMin = driveMin,
+                walkMin = walkMin, walkKm = walkKm, driveMin = driveMin, solo = solo,
                 notes = (listOf(it.notes) + extra).filter { n -> n.isNotBlank() }.joinToString("\n"))
         }
     }

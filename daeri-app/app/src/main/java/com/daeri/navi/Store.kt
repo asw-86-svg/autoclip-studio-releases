@@ -86,6 +86,8 @@ object Store {
         val kind: String = "",
         /** 콜 받은 곳 (내 위치의 동네 이름 + 좌표) */
         val recvArea: String = "", val recvLat: Double = 0.0, val recvLng: Double = 0.0,
+        /** 카카오 단독배정: "프로 단독배정" / "단독배정" / "" */
+        val solo: String = "",
     ) {
         val isTakson get() = kind == "탁송"
         val income get() = fare + viaFee + tip
@@ -115,6 +117,7 @@ object Store {
                     o.optString("memo"), o.optString("key"),
                     o.optBoolean("ok", true), o.optString("pkg"), o.optString("kind"),
                     o.optString("recvArea"), o.optDouble("recvLat", 0.0), o.optDouble("recvLng", 0.0),
+                    o.optString("solo"),
                 ) else {
                     // 예전 형식(수입/지출/제목)에서 옮기기
                     val title = o.optString("title")
@@ -132,6 +135,7 @@ object Store {
         put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
         put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
         put("ok", t.confirmed); put("pkg", t.pkg); put("kind", t.kind)
+        if (t.solo.isNotEmpty()) put("solo", t.solo)
         if (t.recvArea.isNotEmpty() || t.recvLat != 0.0) { put("recvArea", t.recvArea); put("recvLat", t.recvLat); put("recvLng", t.recvLng) }
     }
 
@@ -276,7 +280,7 @@ object Store {
             // 입금액(로지)이 있으면 그게 수수료, 없으면 설정한 수수료율로 계산
             commission = if (deposit > 0) deposit else fare * ctx.commissionRate / 100,
             callKey = c.key, confirmed = ctx.autoToLog, pkg = c.pkg, kind = if (c.isTakson) "탁송" else "대리",
-            recvArea = c.recvArea, recvLat = c.recvLat, recvLng = c.recvLng,
+            recvArea = c.recvArea, recvLat = c.recvLat, recvLng = c.recvLng, solo = c.solo,
         ))
     }
 
@@ -422,7 +426,7 @@ object Store {
         put("fare", c.fare); put("notes", if (trimNotes) c.notes.take(300) else c.notes); put("at", c.capturedAt)
         put("accepted", c.accepted); put("deposit", c.deposit); put("pkg", c.pkg); put("auto", c.autoDispatch); put("rec", c.recommended); put("partner", c.partner); put("via", c.via)
         put("walkMin", c.walkMin); put("walkKm", c.walkKm); put("driveMin", c.driveMin)
-        put("recvArea", c.recvArea); put("recvLat", c.recvLat); put("recvLng", c.recvLng)
+        put("recvArea", c.recvArea); put("recvLat", c.recvLat); put("recvLng", c.recvLng); put("solo", c.solo)
         put("phones", JSONArray().apply { c.phones.forEach { put(JSONArray(listOf(it.first, it.second))) } })
     }
 
@@ -437,6 +441,7 @@ object Store {
         autoDispatch = o.optBoolean("auto"), recommended = o.optBoolean("rec"), partner = o.optBoolean("partner"), via = o.optString("via"),
         walkMin = o.optInt("walkMin"), walkKm = o.optDouble("walkKm", 0.0), driveMin = o.optInt("driveMin"),
         recvArea = o.optString("recvArea"), recvLat = o.optDouble("recvLat", 0.0), recvLng = o.optDouble("recvLng", 0.0),
+        solo = o.optString("solo"),
         phones = o.optJSONArray("phones")?.let { a ->
             (0 until a.length()).map { a.getJSONArray(it).let { p -> p.getString(0) to p.getString(1) } }
         }.orEmpty(),
