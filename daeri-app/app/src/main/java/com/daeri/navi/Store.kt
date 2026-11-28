@@ -23,6 +23,8 @@ object Store {
         // 받은 콜 목록: 개수 제한 없음 (목록삭제 전까지 전부 보관)
         writeHistory(ctx, listOf(c) + history(ctx).filter { it.key != c.key })
         if (c.accepted) recordAccepted(ctx, c)
+        // 콜 포인트 기록 (목록삭제와 상관없이 따로 쌓임)
+        runCatching { CallPoints.upsert(ctx, c) }
     }
 
     // 받은 콜 목록은 콜이 많이 쌓여도 느려지지 않게 별도 파일 + 메모리 캐시

@@ -110,4 +110,18 @@ class StoreTest {
         Store.setRecvLoc(ctx, c.key, "다른 곳", 1.0, 1.0)
         assertEquals("송파구 가락동", Store.trips(ctx).single().recvArea)
     }
+
+    /** 콜 포인트는 받은 콜 목록을 지워도 남는다 (테스트 이름은 영어: 안에 람다가 있으면 한글 이름 파일이 생겨 빌드가 깨짐) */
+    @Test fun callPointsSurviveListDelete() {
+        val c = call("가락동 다농마트", "매영로 366", "32,000", accepted = false)
+        Store.setCurrent(ctx, c)
+        CallPoints.upsert(ctx, c) { it.copy(recvLat = 37.49, recvLng = 127.11, recvArea = "송파구 가락동", oArea = "송파구 가락동") }
+        Store.setCurrent(ctx, c.copy(accepted = true))           // 같은 콜 수락 → 한 건, 수락 표시
+        Store.clearHistory(ctx)                                    // 받은 콜 목록 삭제
+        val p = CallPoints.all(ctx).single { it.key == c.key }
+        assertTrue(p.accepted)
+        assertEquals("송파구 가락동", p.recvArea)
+        assertEquals(32000, p.fare)
+        assertTrue(CallPoints.csv(ctx).contains("송파구 가락동"))
+    }
 }

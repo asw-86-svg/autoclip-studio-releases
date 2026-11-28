@@ -270,6 +270,15 @@ class CallReaderService : AccessibilityService() {
             bg.post {
                 val area = runCatching { Geo.areaName(this, here.lat, here.lng) }.getOrDefault("")
                 Store.setRecvLoc(this, call.key, area, here.lat, here.lng)
+                // 콜 포인트: 받은 곳 + 출발지(손님 위치) 동네
+                val o = runCatching { Geo.resolve(this, call.originQueries, allowArea = true) }.getOrNull()
+                val oArea = o?.let { runCatching { Geo.areaName(this, it.lat, it.lng) }.getOrDefault("") }.orEmpty()
+                runCatching {
+                    CallPoints.upsert(this, call) { p ->
+                        p.copy(recvLat = here.lat, recvLng = here.lng, recvArea = p.recvArea.ifEmpty { area },
+                            oLat = o?.lat ?: p.oLat, oLng = o?.lng ?: p.oLng, oArea = oArea.ifEmpty { p.oArea })
+                    }
+                }
             }
         }
     }

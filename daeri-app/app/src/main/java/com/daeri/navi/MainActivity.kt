@@ -1529,6 +1529,8 @@ class MainActivity : Activity() {
             addView(text("📒 운행일지 데이터", 16f, white, bold = true))
             addView(text("일지 ${all.count { it.confirmed }}건 · 일지에 안 넣은 자동운행기록 ${all.count { !it.confirmed }}건 · 휴지통 ${Store.trash(this@MainActivity).size}건", 14f, 0xFF7FB2FF.toInt()))
             addView(text("운행일지가 바뀔 때마다 바뀌기 전 상태를 자동으로 백업해요 (30일 보관).", 12f, grey))
+            val pts = CallPoints.all(this@MainActivity)
+            addView(text("📍 콜 포인트 기록 ${pts.size}건 (받은 곳 ${pts.count { it.recvArea.isNotEmpty() }}건) — 받은 콜 목록을 지워도 남아요", 13f, 0xFF7FB2FF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
             addView(button("백업에서 되살리기", innerBg) {
                 val list = Store.backups(this@MainActivity)
                 if (list.isEmpty()) { toast("아직 백업이 없어요"); return@button }

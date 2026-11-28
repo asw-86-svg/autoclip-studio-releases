@@ -15,9 +15,9 @@ for x in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
     h=open(x).read(); m=re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"',h)
     t+=int(m[1]); s+=int(m[2]); f+=int(m[3])+int(m[4])
     names+=re.findall(r'<testcase name="([^"]+)" classname="[^"]+"[^>]*>\s*<failure',h)
-print(f"  {'✅' if f==0 and s==0 else '❌'} 검사 {t}개 · 실패 {f} · 건너뜀 {s}")
+print(f"  {'✅' if f==0 and s==0 and t>0 else '❌'} 검사 {t}개 · 실패 {f} · 건너뜀 {s}")
 for n in names: print("     실패:", n)
-sys.exit(1 if f or s else 0)
+sys.exit(1 if f or s or t == 0 else 0)
 PY
 
 echo "2) 화면 모음 (눈으로 확인)"
