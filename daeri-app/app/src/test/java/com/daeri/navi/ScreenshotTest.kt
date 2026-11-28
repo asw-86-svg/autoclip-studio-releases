@@ -41,14 +41,13 @@ class ScreenshotTest {
             program = "카카오대리", fare = 36800, commission = 7360, callKey = "k3", confirmed = false, via = "서정동, 가수동"))
     }
 
-    private fun shot(name: String, open: String, h: Int = 2340, extra: (Intent) -> Unit = {}) {
+    private fun shot(name: String, open: String, h: Int = 2340, w: Int = 1080, extra: (Intent) -> Unit = {}) {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
         if (name !in setOf("call_kakao", "call_long", "call_resv")) seed()
         val intent = Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java).putExtra("open", open)
         extra(intent)
         val act = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
         val root = act.window.decorView
-        val w = 1080
         root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
         root.layout(0, 0, w, h)
         // 화면이 그려진 뒤 실행되는 일(post)까지 처리하고 다시 배치 — 실제 휴대폰과 같게
@@ -134,9 +133,20 @@ class ScreenshotTest {
         shot("report", "report")
     }
 
+    // ---- 폴드6 펼친 화면 (약 705 × 820dp) ----
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerHome() = shot("in_home", "home", 2460, 2115)
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerCall() = shot("in_call", "call", 2460, 2115)
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerCalls() = shot("in_calls", "calls", 2460, 2115)
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerLog() = shot("in_log", "log", 2460, 2115)
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerEditor() = shot("in_editor", "edit", 2460, 2115) { it.putExtra("trip", 1L) }
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerSettings() = shot("in_settings", "settings", 2460, 2115)
+    @Config(qualifiers = "w705dp-h820dp-xxhdpi") @Test fun innerReport() = reportDialog("in_report", 2115)
+
     /** 폴드6 겉화면처럼 좁은 화면에서 퇴근 리포트 창 */
     @Config(qualifiers = "w320dp-h860dp-xxhdpi")
-    @Test fun reportDialogNarrow() {
+    @Test fun reportDialogNarrow() = reportDialog("report_narrow", 960)
+
+    private fun reportDialog(name: String, w: Int) {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
         seed()
         val ctx = RuntimeEnvironment.getApplication()
@@ -147,12 +157,12 @@ class ScreenshotTest {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         val dlg = org.robolectric.shadows.ShadowDialog.getLatestDialog()
         val v = dlg.window!!.decorView
-        val w = 960; val h = 2580
+        val h = 2580
         v.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.AT_MOST))
         v.layout(0, 0, w, v.measuredHeight)
         val bmp = Bitmap.createBitmap(w, v.measuredHeight, Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp); c.drawColor(0xFF000000.toInt()); v.draw(c)
-        File(out, "report_narrow.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(out, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
     @Test fun settingsHour() = shot("settings_hour", "settings", 5600) { it.putExtra("hourOpen", true) }
 }

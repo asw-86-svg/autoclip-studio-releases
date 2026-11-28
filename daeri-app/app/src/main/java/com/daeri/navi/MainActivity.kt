@@ -147,7 +147,7 @@ class MainActivity : Activity() {
     /** 폴드 펼침·접힘, 회전: 화면을 다시 만들지 않고 그대로 둔다 (입력 중인 글자도 유지) */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        reportDialog?.takeIf { it.isShowing }?.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
+        reportDialog?.takeIf { it.isShowing }?.let { fitReport(it) }
         // 넓어진 화면에 맞게 다시 그림 — 글자를 입력하는 화면(일지 수정·검색·직접 입력)은 입력한 글자가 날아가지 않게 그대로
         if (screen !in setOf(Screen.EDIT, Screen.SEARCH, Screen.PASTE)) render()
     }
@@ -425,8 +425,14 @@ class MainActivity : Activity() {
         })
         dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
         dlg.show()
-        dlg.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
+        fitReport(dlg)
         reportDialog = dlg
+    }
+
+    /** 리포트 창 너비: 좁은 화면(겉화면)은 꽉 차게, 넓은 화면(펼친 화면)은 너무 퍼지지 않게 540까지 */
+    private fun fitReport(d: android.app.Dialog) {
+        val wide = resources.configuration.screenWidthDp > 600
+        d.window?.setLayout(if (wide) dp(540) else MATCH_PARENT, WRAP_CONTENT)
     }
 
     /** 지금 떠 있는 퇴근 리포트 창 (폴드 접고 펼 때 크기 다시 맞춤) */
