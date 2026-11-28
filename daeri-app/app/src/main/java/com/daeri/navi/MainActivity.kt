@@ -551,16 +551,14 @@ class MainActivity : Activity() {
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(appIcon(c, size = 36))
-                // 자리가 모자라면 앱 이름이 줄어들고(…), 요금은 항상 다 보이게
-                val nameTv = text(c.source, 15f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(8), 0, 0, 0) }
-                addView(nameTv, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                // 앱 이름은 빼고 아이콘만 (사용자 요청)
                 addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
                     textSize = 11f; setPadding(dp(6), dp(1), dp(6), dp(1))
-                    layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
+                    layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(10) }
                 })
                 addView(kindBadge(c.isTakson, small = true))
                 if (c.solo.isNotEmpty()) addView(soloBadge(c.solo, small = true))
-                addView(View(this@MainActivity), LinearLayout.LayoutParams(dp(6), 1))
+                addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
                 val fareWon = CallParser.won(c.fare)
                 if (c.recommended) addView(recBadge())
                 if (c.fare.isNotEmpty()) addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 20f, blue, bold = true).apply { maxLines = 1 })
