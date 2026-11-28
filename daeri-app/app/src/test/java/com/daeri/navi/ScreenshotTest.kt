@@ -133,5 +133,26 @@ class ScreenshotTest {
             program = "로지", fare = 55000, commission = 11000, callKey = "k12"))
         shot("report", "report")
     }
+
+    /** 폴드6 겉화면처럼 좁은 화면에서 퇴근 리포트 창 */
+    @Config(qualifiers = "w320dp-h860dp-xxhdpi")
+    @Test fun reportDialogNarrow() {
+        assumeTrue(System.getenv("SCREENSHOTS") == "1")
+        seed()
+        val ctx = RuntimeEnvironment.getApplication()
+        with(Store) { ctx.detectPaused = false }
+        val act = Robolectric.buildActivity(MainActivity::class.java, Intent(ctx, MainActivity::class.java)).setup().get()
+        act.javaClass.getDeclaredMethod("clockOut", String::class.java).apply { isAccessible = true }
+            .invoke(act, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREA).format(java.util.Date()))
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        val dlg = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        val v = dlg.window!!.decorView
+        val w = 960; val h = 2580
+        v.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.AT_MOST))
+        v.layout(0, 0, w, v.measuredHeight)
+        val bmp = Bitmap.createBitmap(w, v.measuredHeight, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp); c.drawColor(0xFF000000.toInt()); v.draw(c)
+        File(out, "report_narrow.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
     @Test fun settingsHour() = shot("settings_hour", "settings", 5600) { it.putExtra("hourOpen", true) }
 }

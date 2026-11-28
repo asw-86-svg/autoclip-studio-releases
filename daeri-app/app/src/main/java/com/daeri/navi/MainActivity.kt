@@ -147,6 +147,7 @@ class MainActivity : Activity() {
     /** 폴드 펼침·접힘, 회전: 화면을 다시 만들지 않고 그대로 둔다 (입력 중인 글자도 유지) */
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
+        reportDialog?.takeIf { it.isShowing }?.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
         // 넓어진 화면에 맞게 다시 그림 — 글자를 입력하는 화면(일지 수정·검색·직접 입력)은 입력한 글자가 날아가지 않게 그대로
         if (screen !in setOf(Screen.EDIT, Screen.SEARCH, Screen.PASTE)) render()
     }
@@ -415,15 +416,21 @@ class MainActivity : Activity() {
         dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         // 화면이 작아도(폴드 겉화면) 끝까지 보이게 스크롤
         dlg.setContentView(android.widget.ScrollView(this).apply {
+            // 양옆 여백만 두고 화면 너비에 맞춤 — 폴드를 접고 펴도 화면 밖으로 나가지 않게
+            setPadding(dp(12), dp(12), dp(12), dp(12)); clipToPadding = false
             addView(dailyReport(today, onCancel = { dlg.dismiss() }) {
                 dlg.dismiss()
                 detectPaused = true; CallReaderService.instance?.hideBubble(); toast("수고하셨어요! 안전운행 하세요"); render()
-            })
+            }, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
         dlg.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
         dlg.show()
-        dlg.window?.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), WRAP_CONTENT)
+        dlg.window?.setLayout(MATCH_PARENT, WRAP_CONTENT)
+        reportDialog = dlg
     }
+
+    /** 지금 떠 있는 퇴근 리포트 창 (폴드 접고 펼 때 크기 다시 맞춤) */
+    private var reportDialog: android.app.Dialog? = null
 
     /** 퇴근할 때 보여주는 일일 리포트 */
     private fun dailyReport(today: String, onCancel: () -> Unit, onOk: () -> Unit): View {
