@@ -1222,7 +1222,7 @@ class MainActivity : Activity() {
             addView(text("▾", 18f, grey).apply { setPadding(0, 0, dp(14), 0) })
         }
         val pick = View.OnClickListener {
-            val names = arrayOf("카카오대리", "로지", "콜마너", "I-Driver", "T맵대리", "직접 입력…")
+            val names = arrayOf("카카오대리", "로지", "콜마너", "I-Driver", "아이드라이브", "T맵대리", "직접 입력…")
             AlertDialog.Builder(this).setTitle("프로그램").setItems(names) { _, i ->
                 if (i < names.size - 1) program.setText(names[i])
                 else {

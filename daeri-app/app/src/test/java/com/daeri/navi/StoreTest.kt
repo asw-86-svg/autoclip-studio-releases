@@ -124,4 +124,10 @@ class StoreTest {
         assertEquals(32000, p.fare)
         assertTrue(CallPoints.csv(ctx).contains("송파구 가락동"))
     }
+
+    @Test fun 프로그램_이름() {
+        assertEquals("아이드라이브", Store.programName("아이드라이브"))
+        assertEquals("I-Driver", Store.programName("I-Driver"))
+        assertEquals("카카오대리", Store.programName("카카오T 대리"))
+    }
 }
