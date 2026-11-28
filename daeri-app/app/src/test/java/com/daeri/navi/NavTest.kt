@@ -61,4 +61,24 @@ class NavTest {
         assertEquals(0, a.search("부산").size)
         assertEquals(0, a.search("  ").size)
     }
+
+    /** 폴드 펼침 등으로 앱이 다시 띄워져도 보던 화면 그대로 (영어 이름: 람다 포함) */
+    @Test fun keepsScreenAfterRecreate() {
+        val ctl = Robolectric.buildActivity(MainActivity::class.java, Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java)).setup()
+        ctl.get().go("CALLS"); ctl.get().go("CALL")
+        ctl.recreate()
+        assertEquals("CALL", ctl.get().screen())
+        ctl.get().onBackPressed(); assertEquals("CALLS", ctl.get().screen())
+    }
+
+    /** 폴드 펼침(화면 크기 바뀜): 다시 띄우지 않고 그 화면 그대로 */
+    @Test fun keepsScreenOnUnfold() {
+        val ctl = Robolectric.buildActivity(MainActivity::class.java, Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java)).setup()
+        val a = ctl.get()
+        a.go("CALLS"); a.go("CALL")
+        val cfg = android.content.res.Configuration(a.resources.configuration).apply { screenWidthDp = 840; screenHeightDp = 900; smallestScreenWidthDp = 840 }
+        ctl.configurationChange(cfg)
+        assertEquals(a, ctl.get())               // 같은 화면(다시 만들지 않음)
+        assertEquals("CALL", ctl.get().screen())
+    }
 }

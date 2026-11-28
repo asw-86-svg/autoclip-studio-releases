@@ -112,9 +112,43 @@ class MainActivity : Activity() {
             addView(footer, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         })
         Store.cleanupJunk(this)
+        // 폴드 펼침·메모리 정리 등으로 다시 띄워졌으면 보던 화면 그대로
+        savedInstanceState?.let { restoreState(it) }
         // 광고 목록 새로 확인 (1시간마다). 바뀌면 홈 화면 다시 그림
         Ads.refresh(this) { runOnUiThread { if (screen == Screen.HOME && !isFinishing) render() } }
-        handleIntent(intent)
+        if (savedInstanceState == null) handleIntent(intent) else render()
+    }
+
+    override fun onSaveInstanceState(out: Bundle) {
+        super.onSaveInstanceState(out)
+        out.putString("screen", screen.name)
+        out.putStringArrayList("back", ArrayList(backStack.map { it.name }))
+        out.putLong("day", day.timeInMillis); out.putLong("logMonth", logMonth.timeInMillis)
+        out.putLong("editing", editing?.id ?: -1L); out.putString("editBack", editBack.name)
+        out.putString("searchQ", searchQ); out.putBoolean("logList", logListMode)
+        out.putInt("scrollY", scroll.scrollY)
+    }
+
+    private fun restoreState(b: Bundle) {
+        runCatching {
+            screen = Screen.valueOf(b.getString("screen") ?: "HOME")
+            backStack.clear(); b.getStringArrayList("back")?.forEach { backStack += Screen.valueOf(it) }
+            day = Calendar.getInstance().apply { timeInMillis = b.getLong("day", timeInMillis) }
+            logMonth = Calendar.getInstance().apply { timeInMillis = b.getLong("logMonth", timeInMillis) }
+            val id = b.getLong("editing", -1L)
+            editing = Store.trips(this).firstOrNull { it.id == id }
+            editBack = Screen.valueOf(b.getString("editBack") ?: "DAY")
+            searchQ = b.getString("searchQ").orEmpty(); logListMode = b.getBoolean("logList")
+            restoreScroll = b.getInt("scrollY", 0)
+            lastScreen = null
+        }.onFailure { screen = Screen.HOME; backStack.clear() }
+    }
+
+    /** 폴드 펼침·접힘, 회전: 화면을 다시 만들지 않고 그대로 둔다 (입력 중인 글자도 유지) */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 넓어진 화면에 맞게 다시 그림 — 글자를 입력하는 화면(일지 수정·검색·직접 입력)은 입력한 글자가 날아가지 않게 그대로
+        if (screen !in setOf(Screen.EDIT, Screen.SEARCH, Screen.PASTE)) render()
     }
 
     override fun onNewIntent(intent: Intent) {
