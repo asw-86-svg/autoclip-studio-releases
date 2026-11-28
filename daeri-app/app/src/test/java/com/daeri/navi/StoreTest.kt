@@ -82,4 +82,20 @@ class StoreTest {
         Store.upsertTrip(ctx, Store.Trip(id = 8, time = now, origin = "c", dest = "d", program = "로지", fare = 25000, confirmed = true))
         assertTrue(Store.backups(ctx).isNotEmpty())
     }
+
+    @Test fun 탁송_대리_구분() {
+        val takson = CallInfo("로지", "탁송)매송고색로882", "강원 춘천시 석사동)춘천시 스무숲3길 6", listOf("a"), listOf("b"), "55,000",
+            accepted = true, capturedAt = now, pkg = "com.logi")
+        assertTrue(takson.isTakson)
+        assertTrue(!call("가락동 다농마트", "매영로 366", "32,000", accepted = true).isTakson)
+        Store.setCurrent(ctx, takson)
+        assertEquals("탁송", Store.trips(ctx).single().kind)
+        Store.setCurrent(ctx, call("가락동 다농마트", "매영로 366", "32,000", accepted = true).copy(capturedAt = now + 1))
+        assertEquals(setOf("탁송", "대리"), Store.trips(ctx).map { it.kind }.toSet())
+    }
+
+    @Test fun 예전_기록은_대리() {
+        Store.upsertTrip(ctx, Store.Trip(id = 9, time = now, origin = "a", dest = "b", program = "로지", fare = 20000))
+        assertTrue(!Store.trips(ctx).single().isTakson)
+    }
 }

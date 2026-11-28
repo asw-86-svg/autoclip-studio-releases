@@ -44,7 +44,7 @@ import java.util.Locale
 
 class MainActivity : Activity() {
 
-    private enum class Screen { HOME, CALL, CALLS, AUTO, LOG, DAY, EDIT, TRASH, PASTE, SETTINGS }
+    private enum class Screen { HOME, CALL, CALLS, AUTO, LOG, DAY, EDIT, TRASH, PASTE, SETTINGS, SEARCH }
 
     // ---------- 색 ----------
     private val black = 0xFF000000.toInt()
@@ -179,6 +179,7 @@ class MainActivity : Activity() {
             "calls" -> screen = Screen.CALLS
             "log" -> screen = Screen.LOG
             "report" -> { screen = Screen.HOME; reportPreview = true }
+            "search" -> { screen = Screen.SEARCH; searchQ = i.getStringExtra("q").orEmpty() }
             "settings" -> { screen = Screen.SETTINGS; hourOpen = i.getBooleanExtra("hourOpen", false) }
             "trash" -> screen = Screen.TRASH
             "day" -> { day = bizToday(); dayBack = Screen.HOME; screen = Screen.DAY }
@@ -223,6 +224,7 @@ class MainActivity : Activity() {
             Screen.TRASH -> renderTrash()
             Screen.PASTE -> renderPaste()
             Screen.SETTINGS -> renderSettings()
+            Screen.SEARCH -> renderSearch()
         }
         if (lastScreen != screen) { val y = restoreScroll ?: 0; restoreScroll = null; scroll.post { scroll.scrollTo(0, y) } }
         lastScreen = screen
@@ -307,10 +309,7 @@ class MainActivity : Activity() {
             addView(menuItem("🚗", "자동운행기록", if (pending > 0) "$pending" else null) { go(Screen.AUTO) })
             addView(divider())
             addView(menuItem("📅", "운행일지", null) { logMonth = bizToday(); go(Screen.LOG) })
-            addView(divider())
-            addView(menuItem("✍️", "직접 입력 (문자·카톡 콜)", null) { go(Screen.PASTE) })
-            addView(divider())
-            addView(menuItem("⚙️", "설정", null) { go(Screen.SETTINGS) })
+            // '직접 입력'·'설정' 메뉴는 뺌 (설정은 오른쪽 위, 문자·카톡 콜은 공유하기로 넣을 수 있음)
         })
 
         // 광고 (광고가 없으면 칸 자체가 안 보임)
@@ -443,6 +442,9 @@ class MainActivity : Activity() {
             addView(line("경유금액", won(list.sumOf { it.viaFee }) + "원"))
             addView(line("팁금액", won(list.sumOf { it.tip }) + "원"))
             addView(dash())
+            addView(line("대리", "${list.count { !it.isTakson }}콜"))
+            addView(line("탁송", "${list.count { it.isTakson }}콜", if (list.any { it.isTakson }) 0xFFF5A623.toInt() else white))
+            addView(dash())
             if (list.isEmpty()) addView(line("운행", "0콜"))
             list.groupBy { it.program.ifBlank { "기타" } }.toList().sortedByDescending { it.second.size }.forEach { (prog, l) ->
                 addView(line(prog, "${l.size}콜"))
@@ -502,9 +504,13 @@ class MainActivity : Activity() {
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
                     addView(text(c.source, 17f, white, bold = true).apply { maxLines = 1 })
-                    addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
-                        textSize = 12f; setPadding(dp(8), dp(2), dp(8), dp(2))
-                        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = dp(4) }
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(4), 0, 0)
+                        addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
+                            textSize = 12f; setPadding(dp(8), dp(2), dp(8), dp(2))
+                        })
+                        addView(kindBadge(c.isTakson))
                     })
                 }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                 val fareWon = CallParser.won(c.fare)
@@ -728,7 +734,13 @@ class MainActivity : Activity() {
                     addView(appIcon(h))
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-                        addView(text(h.source, 18f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                        // 앱 이름 옆에 대리/탁송
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            addView(text(h.source, 18f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+                                LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { weight = 0f; width = WRAP_CONTENT })
+                            addView(kindBadge(h.isTakson, small = true))
+                        })
                         addView(LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                             addView(text(fmt.format(Date(h.capturedAt)), 14f, grey).apply { maxLines = 1 })
@@ -778,6 +790,14 @@ class MainActivity : Activity() {
 
     private val iconCache = HashMap<String, android.graphics.drawable.Drawable?>()
 
+    /** 대리 / 탁송 구분 표시 (탁송 = 주황) */
+    private fun kindBadge(takson: Boolean, small: Boolean = false) = TextView(this).apply {
+        text = if (takson) "탁송" else "대리"; textSize = if (small) 11f else 12f; setTypeface(typeface, Typeface.BOLD)
+        setTextColor(if (takson) 0xFF1A1A1A.toInt() else 0xFFBFD4FF.toInt())
+        setPadding(dp(7), dp(2), dp(7), dp(2)); background = rounded(if (takson) 0xFFF5A623.toInt() else 0xFF1F3354.toInt(), 6)
+        layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
+    }
+
     /** 금액 옆 빨간 '추천가' 표시 */
     private fun recBadge() = TextView(this).apply {
         text = "추천가"; textSize = 11f; setTextColor(white); setTypeface(typeface, Typeface.BOLD)
@@ -812,7 +832,7 @@ class MainActivity : Activity() {
     private val ymFmt = SimpleDateFormat("yyyy-MM", Locale.KOREA)
 
     private fun renderLog() {
-        setTop("운행일지", true)
+        setTop("운행일지", true, "🔍 검색") { go(Screen.SEARCH) }
         dayBack = Screen.LOG
         val ym = ymFmt.format(logMonth.time)
         val monthTrips = Store.trips(this).filter { it.confirmed && ymFmt.format(Date(it.time - dayStartHour * 3600_000L)) == ym }
@@ -947,7 +967,11 @@ class MainActivity : Activity() {
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
                         addView(text(t.program.ifEmpty { "대리 앱" }, 18f, white, bold = true).apply { maxLines = 1 })
-                        addView(text(f.format(Date(t.time)), 13f, grey).apply { maxLines = 1 })
+                        addView(LinearLayout(this@MainActivity).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            addView(text(f.format(Date(t.time)), 13f, grey).apply { maxLines = 1 })
+                            addView(kindBadge(t.isTakson, small = true))
+                        })
                     }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     addView(LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL; gravity = Gravity.END
@@ -1011,8 +1035,9 @@ class MainActivity : Activity() {
                 setOnClickListener { openEditor(t) }
                 addView(LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    addView(text(hm.format(Date(t.time)) + "  " + t.program, 15f, grey).apply { maxLines = 1 },
-                        LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(text(hm.format(Date(t.time)) + "  " + t.program, 15f, grey).apply { maxLines = 1 })
+                    addView(kindBadge(t.isTakson, small = true))
+                    addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(text("순익 ${won(t.net)}", 17f, white, bold = true))
                 })
                 if (t.origin.isNotEmpty()) addView(text(dot(blue, "●  ${t.origin}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
@@ -1030,6 +1055,75 @@ class MainActivity : Activity() {
         footer.visibility = View.VISIBLE
         footer.setPadding(dp(16), dp(10), dp(16), dp(12))
         footer.addView(summaryBlock("일일 합계", list, fixed = dayFix(list)))
+    }
+
+    // ---------------- 운행일지 검색 ----------------
+    private var searchQ = ""
+    private var searchShown = 50
+
+    /** 검색어(띄어쓰기로 여러 개 = 모두 들어간 것)로 운행일지 찾기. 주소·가게·프로그램·메모·금액·날짜 */
+    private fun searchTrips(q: String): List<Store.Trip> {
+        val words = q.trim().lowercase().replace(",", "").split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        if (words.isEmpty()) return emptyList()
+        val ymd = SimpleDateFormat("yyyy-MM-dd", Locale.KOREA); val md = SimpleDateFormat("M월 d일 M/d", Locale.KOREA)
+        return Store.trips(this).filter { it.confirmed }.filter { t ->
+            val biz = t.time - dayStartHour * 3600_000L
+            val hay = listOf(ymd.format(Date(biz)), md.format(Date(biz)), t.origin, t.via, t.dest, t.program, t.memo,
+                t.fare.toString(), t.net.toString(), if (t.isTakson) "탁송" else "대리").joinToString(" ").lowercase().replace(",", "")
+            // 띄어쓰기 차이("다농 마트" / "다농마트")도 찾도록 공백 없는 것도 같이 본다
+            val compact = hay.replace(" ", "")
+            words.all { it in hay || it in compact }
+        }.sortedByDescending { it.time }
+    }
+
+    private fun renderSearch() {
+        setTop("운행일지 검색", true)
+        val results = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        fun show() {
+            results.removeAllViews()
+            footer.removeAllViews(); footer.visibility = View.GONE
+            val found = searchTrips(searchQ)
+            if (searchQ.isBlank()) {
+                results.addView(text("출발지·도착지·가게 이름·프로그램·메모·금액·날짜로 찾을 수 있어요\n예) 다농마트 · 동탄 · 로지 · 32000 · 11월 27일\n여러 단어를 띄어 쓰면 모두 들어간 기록만 나와요 (예: 동탄 카카오)", 13f, grey).apply { setPadding(dp(6), dp(10), dp(6), 0) })
+                return
+            }
+            if (found.isEmpty()) { results.addView(card().apply { addView(text("'$searchQ' 로 찾은 기록이 없어요.", 15f, grey)) }); return }
+            val f = SimpleDateFormat("yyyy-MM-dd (E) HH:mm", Locale.KOREA)
+            found.take(searchShown).forEach { t ->
+                results.addView(card().apply {
+                    setOnClickListener { openEditor(t) }
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        addView(text(f.format(Date(t.time)) + "  " + t.program, 13f, grey).apply { maxLines = 1 })
+                        addView(kindBadge(t.isTakson, small = true))
+                        addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+                        addView(text("${won(t.fare)}원", 16f, blue, bold = true))
+                    })
+                    if (t.origin.isNotEmpty()) addView(text(dot(blue, "●  ${t.origin}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                    if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                    if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                    if (t.memo.isNotEmpty()) addView(text("📝 ${t.memo}", 13f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                })
+            }
+            if (found.size > searchShown) results.addView(button("더 보기 (${found.size - searchShown}개 남음)", innerBg) { searchShown += 50; show() })
+            footer.visibility = View.VISIBLE
+            footer.setPadding(dp(16), dp(10), dp(16), dp(12))
+            footer.addView(summaryBlock("검색 합계", found))
+        }
+        val box = edit("🔍  주소·가게·프로그램·메모·금액·날짜").apply {
+            setText(searchQ); setSelection(searchQ.length)
+            textSize = 17f; minHeight = dp(54)
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+                override fun onTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+                override fun afterTextChanged(e: android.text.Editable?) { searchQ = e?.toString().orEmpty(); searchShown = 50; show() }
+            })
+        }
+        root.addView(box)
+        root.addView(results)
+        show()
+        if (searchQ.isBlank()) box.post { box.requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(box, 0) }
     }
 
     // ---------------- 삭제된 기록 (30일 보관, 되살리기) ----------------
@@ -1134,6 +1228,18 @@ class MainActivity : Activity() {
             }.show()
         }
         program.setOnClickListener(pick); programRow.setOnClickListener(pick)
+        // 대리 / 탁송
+        var kind = t?.kind?.ifEmpty { "대리" } ?: "대리"
+        val kindRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun drawKind() {
+            kindRow.removeAllViews()
+            listOf("대리", "탁송").forEachIndexed { i, k ->
+                kindRow.addView(smallButton(k, if (kind == k) (if (k == "탁송") 0xFFF5A623.toInt() else blue) else innerBg,
+                    if (kind == k && k == "탁송") 0xFF1A1A1A.toInt() else white) { kind = k; drawKind() },
+                    LinearLayout.LayoutParams(0, dp(50), 1f).apply { if (i > 0) leftMargin = dp(8) })
+            }
+        }
+        drawKind()
         val viaFee = numEdit(t?.viaFee)
         val tip = numEdit(t?.tip)
         val commission = numEdit(t?.commission).apply { setTextColor(red) }
@@ -1153,6 +1259,7 @@ class MainActivity : Activity() {
         root.addView(card().apply {
             addView(formRow("요금", fare))
             addView(formRow("프로그램", programRow))
+            addView(formRow("종류", kindRow))
             addView(formDivider())
             addView(formRow("경유비", row(listOf(viaFee, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(viaFee, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(viaFee, 5000) }), weights = listOf(1.6f, 1f, 1f))))
             addView(formRow("팁", row(listOf(tip, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(tip, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(tip, 5000) }), weights = listOf(1.6f, 1f, 1f))))
@@ -1216,7 +1323,7 @@ class MainActivity : Activity() {
                 fare = v(fare), viaFee = v(viaFee), tip = v(tip),
                 commission = v(commission), insurance = v(insurance), transport = v(transport), transportMode = transportMode,
                 memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
-                confirmed = true, pkg = t?.pkg.orEmpty(),
+                confirmed = true, pkg = t?.pkg.orEmpty(), kind = kind,
             ))
             toast(if (t != null && !t.confirmed) "운행일지에 추가했어요" else "저장했어요")
             go(editBack)

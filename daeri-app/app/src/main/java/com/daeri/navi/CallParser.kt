@@ -34,6 +34,8 @@ data class CallInfo(
     val driveMin: Int = 0,
 ) {
     val key: String get() = "$originRaw|$destRaw"
+    /** 탁송 콜인지 (로지 "탁송)매송고색로…", 메모·적요의 "탁송", 탁송 앱) — 아니면 대리 */
+    val isTakson: Boolean get() = listOf(originRaw, destRaw, notes, source).any { "탁송" in it }
     val originDisplay: String get() = originQueries.firstOrNull() ?: originRaw
     val destDisplay: String get() = destQueries.firstOrNull() ?: destRaw
 }

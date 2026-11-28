@@ -41,4 +41,24 @@ class NavTest {
         a.go("AUTO"); a.go("CALL")
         a.onBackPressed(); assertEquals("AUTO", a.screen())
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun MainActivity.search(q: String): List<Store.Trip> =
+        javaClass.getDeclaredMethod("searchTrips", String::class.java).let { it.isAccessible = true; it.invoke(this, q) as List<Store.Trip> }
+
+    @Test fun 운행일지_검색() {
+        val ctx = RuntimeEnvironment.getApplication()
+        val now = System.currentTimeMillis()
+        Store.upsertTrip(ctx, Store.Trip(id = 101, time = now, origin = "가락동 다농마트", dest = "경기 수원시 영통구 매영로 366", program = "카카오대리", fare = 32000, confirmed = true))
+        Store.upsertTrip(ctx, Store.Trip(id = 102, time = now - 3600_000, origin = "동탄역", dest = "오산시 누읍로 20", program = "로지", fare = 25000, memo = "대기 20분", confirmed = true))
+        Store.upsertTrip(ctx, Store.Trip(id = 103, time = now, origin = "다농마트", dest = "x", program = "로지", fare = 9000, confirmed = false)) // 일지에 안 넣은 건 제외
+        val a = Robolectric.buildActivity(MainActivity::class.java, Intent(ctx, MainActivity::class.java)).setup().get()
+        assertEquals(listOf(101L), a.search("다농마트").map { it.id })
+        assertEquals(listOf(101L), a.search("다농 마트").map { it.id })      // 띄어쓰기 달라도
+        assertEquals(listOf(101L), a.search("32,000").map { it.id })        // 금액
+        assertEquals(listOf(102L), a.search("동탄 로지").map { it.id })      // 두 단어 모두
+        assertEquals(listOf(102L), a.search("대기").map { it.id })           // 메모
+        assertEquals(0, a.search("부산").size)
+        assertEquals(0, a.search("  ").size)
+    }
 }

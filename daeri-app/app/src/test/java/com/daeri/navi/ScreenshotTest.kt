@@ -81,6 +81,8 @@ class ScreenshotTest {
     @Test fun trash() = shot("trash", "trash")
     @Test fun settings() = shot("settings", "settings", 4600)
     @Test fun log() = shot("log", "log")
+    @Test fun search() = shot("search", "search") { it.putExtra("q", "수원") }
+    @Test fun searchEmpty() = shot("search_empty", "search")
     /** 지도 미리보기용: 실제로 받았던 카카오 콜 */
     @Test fun callKakao() {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")

@@ -75,7 +75,10 @@ object Store {
         val confirmed: Boolean = true,
         /** 콜을 읽은 대리 앱 패키지 (아이콘 표시용) */
         val pkg: String = "",
+        /** "탁송" 또는 "대리" (예전 기록은 빈칸 = 대리) */
+        val kind: String = "",
     ) {
+        val isTakson get() = kind == "탁송"
         val income get() = fare + viaFee + tip
         val expense get() = commission + insurance + transport
         val net get() = income - expense
@@ -101,7 +104,7 @@ object Store {
                     o.optInt("fare"), o.optInt("viaFee"), o.optInt("tip"),
                     o.optInt("commission"), o.optInt("insurance"), o.optInt("transport"), o.optString("transportMode"),
                     o.optString("memo"), o.optString("key"),
-                    o.optBoolean("ok", true), o.optString("pkg"),
+                    o.optBoolean("ok", true), o.optString("pkg"), o.optString("kind"),
                 ) else {
                     // 예전 형식(수입/지출/제목)에서 옮기기
                     val title = o.optString("title")
@@ -118,7 +121,7 @@ object Store {
         put("fare", t.fare); put("viaFee", t.viaFee); put("tip", t.tip)
         put("commission", t.commission); put("insurance", t.insurance); put("transport", t.transport)
         put("transportMode", t.transportMode); put("memo", t.memo); put("key", t.callKey)
-        put("ok", t.confirmed); put("pkg", t.pkg)
+        put("ok", t.confirmed); put("pkg", t.pkg); put("kind", t.kind)
     }
 
     private fun saveTrips(ctx: Context, list: List<Trip>) = synchronized(tripLock) {
@@ -248,7 +251,7 @@ object Store {
             fare = fare,
             // 입금액(로지)이 있으면 그게 수수료, 없으면 설정한 수수료율로 계산
             commission = if (deposit > 0) deposit else fare * ctx.commissionRate / 100,
-            callKey = c.key, confirmed = ctx.autoToLog, pkg = c.pkg,
+            callKey = c.key, confirmed = ctx.autoToLog, pkg = c.pkg, kind = if (c.isTakson) "탁송" else "대리",
         ))
     }
 
