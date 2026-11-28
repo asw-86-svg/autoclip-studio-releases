@@ -296,22 +296,7 @@ class MainActivity : Activity() {
             fixedNote(dayFix(tToday), "일고정비")?.let { addView(it) }
         })
 
-        // 지금 콜
-        Store.current(this)?.let { c ->
-            // 카드 전체를 누르면 콜 상세(지도·길안내)로
-            root.addView(card().apply {
-                setOnClickListener { go(Screen.CALL) }
-                val fareWon = CallParser.won(c.fare)
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    addView(text("지금 콜 · ${c.source}", 13f, grey), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                    if (c.recommended) addView(recBadge())
-                    if (fareWon > 0) addView(text("${won(fareWon)}원", 17f, blue, bold = true))
-                    addView(text("  ›", 22f, grey))
-                })
-                addView(addressBox(c))
-            })
-        }
+        // '지금 콜' 칸은 뺌 (사용자 요청) — 콜 상세는 받은 콜 목록에서 열 수 있음
 
         // 메뉴
         val todayCalls = Store.history(this).count { dayKey(it.capturedAt) == today }
