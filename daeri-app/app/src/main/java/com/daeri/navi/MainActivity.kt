@@ -241,6 +241,8 @@ class MainActivity : Activity() {
 
     // =================== 화면 그리기 ===================
     private fun render() {
+        // 콜 상세는 지도를 크게 — 아래 여백 줄임
+        root.setPadding(dp(12), dp(12), dp(12), if (screen == Screen.CALL) dp(6) else dp(24))
         // 콜 상세를 떠나면 실시간 위치 끄기 (배터리)
         stopWatch?.invoke(); stopWatch = null; callWeb = null
         root.removeAllViews()
@@ -531,39 +533,28 @@ class MainActivity : Activity() {
             return
         }
         root.addView(card().apply {
-            // 대리 앱 이름 · 수락 전 / 요금
+            // 한 줄로 작게: [앱 아이콘] 앱 이름 [수락 전][대리]  ···  [추천가] 12,000원
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                addView(appIcon(c))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0)
-                    addView(text(c.source, 17f, white, bold = true).apply { maxLines = 1 })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(4), 0, 0)
-                        addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
-                            textSize = 12f; setPadding(dp(8), dp(2), dp(8), dp(2))
-                        })
-                        addView(kindBadge(c.isTakson))
-                    })
-                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                val fareWon = CallParser.won(c.fare)
-                if (c.fare.isNotEmpty()) addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL; gravity = Gravity.END
-                    addView(text("요금", 12f, grey).apply { gravity = Gravity.END })
-                    addView(LinearLayout(this@MainActivity).apply {
-                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END
-                        if (c.recommended) addView(recBadge())
-                        addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 24f, blue, bold = true).apply { maxLines = 1 })
-                    })
+                addView(appIcon(c, size = 36))
+                addView(text(c.source, 15f, white, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(8), 0, 0, 0) },
+                    LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { weight = 0f })
+                addView(badge(if (c.accepted) "배정" else "수락 전", innerBg, grey).apply {
+                    textSize = 11f; setPadding(dp(6), dp(1), dp(6), dp(1))
+                    layoutParams = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(6) }
                 })
+                addView(kindBadge(c.isTakson, small = true))
+                addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+                val fareWon = CallParser.won(c.fare)
+                if (c.recommended) addView(recBadge())
+                if (c.fare.isNotEmpty()) addView(text(if (fareWon > 0) "${won(fareWon)}원" else c.fare, 20f, blue, bold = true).apply { maxLines = 1 })
             })
 
             // 예약 콜이면 날짜·시간·메모
             c.notes.lines().firstOrNull { it.startsWith("[예약]") }?.let { r ->
-                addView(text("🗓 예약 " + r.removePrefix("[예약]").trim(), 14f, 0xFFF5A623.toInt(), bold = true).apply { setPadding(0, dp(10), 0, 0) })
+                addView(text("🗓 예약 " + r.removePrefix("[예약]").trim(), 13f, 0xFFF5A623.toInt(), bold = true).apply { setPadding(0, dp(6), 0, 0) })
             }
-            if (c.recvArea.isNotEmpty()) addView(text("📍 콜 받은 곳: ${c.recvArea}", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
+            if (c.recvArea.isNotEmpty()) addView(text("📍 콜 받은 곳: ${c.recvArea}", 12f, grey).apply { setPadding(0, dp(6), 0, 0) })
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
@@ -656,11 +647,11 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = rounded(innerBg, 12)
             addView(TextView(this@MainActivity).apply {
-                text = "⌖"; textSize = 22f; setTextColor(color); gravity = Gravity.CENTER
+                text = "⌖"; textSize = 18f; setTextColor(color); gravity = Gravity.CENTER
                 setOnClickListener { onFocus() }
                 contentDescription = "지도에서 보기"
-            }, LinearLayout.LayoutParams(0, dp(44), 1f))
-            extra.forEach { addView(it, LinearLayout.LayoutParams(0, dp(44), 1f)) }
+            }, LinearLayout.LayoutParams(0, dp(34), 1f))
+            extra.forEach { addView(it, LinearLayout.LayoutParams(0, dp(34), 1f)) }
         }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
@@ -671,7 +662,7 @@ class MainActivity : Activity() {
     private fun navBtn(pkg: String, mode: String, name: String, color: Int, textColor: Int, onClick: () -> Unit): View {
         val icon = iconCache.getOrPut(pkg) { runCatching { packageManager.getApplicationIcon(pkg) }.getOrNull() }
         if (icon == null) return TextView(this).apply {
-            text = android.text.SpannableString("$mode\n$name").apply { setSpan(android.text.style.RelativeSizeSpan(1.5f), 0, mode.length, 0) }
+            text = "$mode$name"
             textSize = 11f; setTextColor(textColor); setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER; background = rounded(color, 10)
             setOnClickListener { onClick() }
@@ -680,8 +671,8 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
             contentDescription = "$name $mode"
             addView(android.widget.ImageView(this@MainActivity).apply { setImageDrawable(icon) },
-                android.widget.FrameLayout.LayoutParams(dp(32), dp(32), Gravity.CENTER))
-            addView(TextView(this@MainActivity).apply { text = mode; textSize = 10f },
+                android.widget.FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+            addView(TextView(this@MainActivity).apply { text = mode; textSize = 8f },
                 android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.END or Gravity.BOTTOM))
         }
     }
@@ -760,7 +751,7 @@ class MainActivity : Activity() {
         return android.widget.FrameLayout(this).apply {
             background = rounded(innerBg, 14)
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(360)).apply { topMargin = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(360)).apply { topMargin = dp(8) }
             // 화면이 배치되면 남는 높이만큼 지도를 키워서 스크롤 없이 한 화면에 (최소 220)
             val box = this
             post {
@@ -868,16 +859,19 @@ class MainActivity : Activity() {
     }
 
     /** 설치된 대리 앱의 진짜 아이콘 (없으면 글자 아이콘) */
-    private fun appIcon(h: CallInfo): View {
+    private fun appIcon(h: CallInfo, size: Int = 56): View {
         val icon = if (h.pkg.isEmpty()) null else iconCache.getOrPut(h.pkg) {
             runCatching { packageManager.getApplicationIcon(h.pkg) }.getOrNull()
         }
-        if (icon == null) return iconBox(appEmoji(h.source))
+        if (icon == null) return iconBox(appEmoji(h.source)).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(size), dp(size)); if (size < 56) { textSize = 15f; background = rounded(innerBg, 10) }
+        }
+        val pad = if (size < 56) dp(3) else dp(8)
         return android.widget.ImageView(this).apply {
             setImageDrawable(icon)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = rounded(innerBg, 16, line)
-            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+            setPadding(pad, pad, pad, pad)
+            background = rounded(innerBg, if (size < 56) 10 else 16, line)
+            layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
         }
     }
 
