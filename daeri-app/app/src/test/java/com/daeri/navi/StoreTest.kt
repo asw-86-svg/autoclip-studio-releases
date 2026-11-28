@@ -98,4 +98,16 @@ class StoreTest {
         Store.upsertTrip(ctx, Store.Trip(id = 9, time = now, origin = "a", dest = "b", program = "로지", fare = 20000))
         assertTrue(!Store.trips(ctx).single().isTakson)
     }
+
+    @Test fun 콜_받은_곳_저장() {
+        val c = call("가락동 다농마트", "매영로 366", "32,000", accepted = true)
+        Store.setCurrent(ctx, c)
+        Store.setRecvLoc(ctx, c.key, "송파구 가락동", 37.49, 127.11)
+        assertEquals("송파구 가락동", Store.current(ctx)!!.recvArea)
+        assertEquals("송파구 가락동", Store.history(ctx).first().recvArea)
+        assertEquals("송파구 가락동", Store.trips(ctx).single().recvArea)
+        // 이미 저장된 곳은 덮어쓰지 않음
+        Store.setRecvLoc(ctx, c.key, "다른 곳", 1.0, 1.0)
+        assertEquals("송파구 가락동", Store.trips(ctx).single().recvArea)
+    }
 }

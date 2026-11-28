@@ -46,6 +46,27 @@ object Geo {
         return (near?.let { geocoder(ctx, area, it) } ?: geocoder(ctx, area))?.copy(label = "$area (대략)")
     }
 
+    /**
+     * 좌표 → 동네 이름 ("수원시 영통구 영통동"). 카카오 먼저, 안 되면 휴대폰 기본. 백그라운드에서 호출.
+     */
+    @Suppress("DEPRECATION")
+    fun areaName(ctx: Context, lat: Double, lng: Double): String {
+        val key = ctx.kakaoKey.trim()
+        if (key.isNotEmpty()) runCatching {
+            val con = URL("https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=$lng&y=$lat").openConnection() as HttpURLConnection
+            con.setRequestProperty("Authorization", "KakaoAK $key")
+            con.connectTimeout = 5000; con.readTimeout = 5000
+            val docs = JSONObject(con.inputStream.bufferedReader().use { it.readText() }).getJSONArray("documents")
+            // H = 행정동, B = 법정동 — 법정동(주소에 쓰는 이름) 우선
+            val d = (0 until docs.length()).map { docs.getJSONObject(it) }.let { l -> l.firstOrNull { it.optString("region_type") == "B" } ?: l.firstOrNull() }
+            if (d != null) return listOf("region_2depth_name", "region_3depth_name").map { d.optString(it) }.filter { it.isNotBlank() }.joinToString(" ")
+        }
+        return runCatching {
+            val a = Geocoder(ctx, Locale.KOREA).getFromLocation(lat, lng, 1)?.firstOrNull() ?: return ""
+            listOfNotNull(a.locality ?: a.subAdminArea, a.subLocality, a.thoroughfare).distinct().joinToString(" ")
+        }.getOrDefault("")
+    }
+
     /** 마지막 위치 찾기 실패 이유 (문제 해결용) */
     @Volatile var lastError: String = ""
 

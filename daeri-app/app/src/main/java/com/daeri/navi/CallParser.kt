@@ -32,6 +32,8 @@ data class CallInfo(
     val walkMin: Int = 0, val walkKm: Double = 0.0,
     /** 콜카드에 적힌 출발→도착 차량 시간(분) — 카카오 "약 18분 운행" */
     val driveMin: Int = 0,
+    /** 콜을 받았을 때 내 위치 (동네 이름 + 좌표, 모르면 빈칸/0) */
+    val recvArea: String = "", val recvLat: Double = 0.0, val recvLng: Double = 0.0,
 ) {
     val key: String get() = "$originRaw|$destRaw"
     /** 탁송 콜인지 (로지 "탁송)매송고색로…", 메모·적요의 "탁송", 탁송 앱) — 아니면 대리 */

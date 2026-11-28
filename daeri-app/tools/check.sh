@@ -61,6 +61,9 @@ PY
 r=$(curl -s -m 10 -G "https://dapi.kakao.com/v2/local/search/keyword.json" --data-urlencode "query=가락동 다농마트" --data-urlencode size=1 -H "Authorization: KakaoAK $REST")
 echo "$r" | grep -q '"place_name"' && ok "가락동 다농마트 → $(echo "$r" | python3 -c 'import sys,json;d=json.load(sys.stdin)["documents"][0];print(d["place_name"],d["address_name"])')" || bad "카카오 검색: ${r:0:120}"
 
+r=$(curl -s -m 10 "https://dapi.kakao.com/v2/local/geo/coord2regioncode.json?x=127.0786&y=37.2507" -H "Authorization: KakaoAK $REST")
+echo "$r" | grep -q '영통동' && ok "좌표 → 동네 이름 (콜 받은 곳): 영통동" || bad "동네 이름 찾기: ${r:0:120}"
+
 echo "5) APK"
 ls -la app/build/outputs/apk/release/app-release.apk >/dev/null 2>&1 && ok "APK $(stat -c%s app/build/outputs/apk/release/app-release.apk) bytes" || bad "APK 없음"
 

@@ -256,9 +256,21 @@ class CallReaderService : AccessibilityService() {
                 return
             }
             Store.setCurrent(this, call)
+            saveRecvLoc(call)
             status("✅ ${appName(pkg)} 콜 읽음: ${call.originDisplay} → ${call.destDisplay}")
             if (bubbleFor(pkg)) handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call); keepBubble() }
             return
+        }
+    }
+
+    /** 콜 받은 곳 = 콜을 읽은 순간의 내 위치 → 동네 이름으로 저장 */
+    private fun saveRecvLoc(call: CallInfo) {
+        Loc.current(this) { here ->
+            if (here == null) return@current
+            bg.post {
+                val area = runCatching { Geo.areaName(this, here.lat, here.lng) }.getOrDefault("")
+                Store.setRecvLoc(this, call.key, area, here.lat, here.lng)
+            }
         }
     }
 

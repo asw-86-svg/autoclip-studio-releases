@@ -525,6 +525,7 @@ class MainActivity : Activity() {
                 })
             })
 
+            if (c.recvArea.isNotEmpty()) addView(text("📍 콜 받은 곳: ${c.recvArea}", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
@@ -766,7 +767,7 @@ class MainActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(12), dp(10), dp(10), dp(10))
                     background = rounded(innerBg, 12)
-                    addView(addressBox(h, oneLine = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                    addView(addressBox(h, oneLine = true, showRecv = true), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                     addView(android.widget.ImageView(this@MainActivity).apply {
                         setImageResource(R.drawable.ic_map)
                         scaleType = android.widget.ImageView.ScaleType.CENTER
@@ -1043,6 +1044,7 @@ class MainActivity : Activity() {
                 if (t.origin.isNotEmpty()) addView(text(dot(blue, "●  ${t.origin}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                if (t.recvArea.isNotEmpty()) addView(text("📍 ${t.recvArea}에서 받음", 13f, grey).apply { setPadding(0, dp(4), 0, 0) })
                 addView(totalsRow(t.income, t.expense, showNet = false))
                 addView(row(listOf(
                     button("수정", innerBg) { openEditor(t) },
@@ -1069,7 +1071,7 @@ class MainActivity : Activity() {
         return Store.trips(this).filter { it.confirmed }.filter { t ->
             val biz = t.time - dayStartHour * 3600_000L
             val hay = listOf(ymd.format(Date(biz)), md.format(Date(biz)), t.origin, t.via, t.dest, t.program, t.memo,
-                t.fare.toString(), t.net.toString(), if (t.isTakson) "탁송" else "대리").joinToString(" ").lowercase().replace(",", "")
+                t.fare.toString(), t.net.toString(), if (t.isTakson) "탁송" else "대리", t.recvArea).joinToString(" ").lowercase().replace(",", "")
             // 띄어쓰기 차이("다농 마트" / "다농마트")도 찾도록 공백 없는 것도 같이 본다
             val compact = hay.replace(" ", "")
             words.all { it in hay || it in compact }
@@ -1103,6 +1105,7 @@ class MainActivity : Activity() {
                     if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                     if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                     if (t.memo.isNotEmpty()) addView(text("📝 ${t.memo}", 13f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                    if (t.recvArea.isNotEmpty()) addView(text("📍 ${t.recvArea}에서 받음", 13f, grey).apply { maxLines = 1 })
                 })
             }
             if (found.size > searchShown) results.addView(button("더 보기 (${found.size - searchShown}개 남음)", innerBg) { searchShown += 50; show() })
@@ -1260,6 +1263,7 @@ class MainActivity : Activity() {
             addView(formRow("요금", fare))
             addView(formRow("프로그램", programRow))
             addView(formRow("종류", kindRow))
+            if (!t?.recvArea.isNullOrEmpty()) addView(formRow("콜 받은 곳", text("📍 ${t!!.recvArea}", 15f, white).apply { setPadding(dp(4), dp(12), 0, dp(12)) }))
             addView(formDivider())
             addView(formRow("경유비", row(listOf(viaFee, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(viaFee, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(viaFee, 5000) }), weights = listOf(1.6f, 1f, 1f))))
             addView(formRow("팁", row(listOf(tip, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(tip, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(tip, 5000) }), weights = listOf(1.6f, 1f, 1f))))
@@ -1324,6 +1328,7 @@ class MainActivity : Activity() {
                 commission = v(commission), insurance = v(insurance), transport = v(transport), transportMode = transportMode,
                 memo = memo.text.toString().trim(), callKey = t?.callKey.orEmpty(),
                 confirmed = true, pkg = t?.pkg.orEmpty(), kind = kind,
+                recvArea = t?.recvArea.orEmpty(), recvLat = t?.recvLat ?: 0.0, recvLng = t?.recvLng ?: 0.0,
             ))
             toast(if (t != null && !t.confirmed) "운행일지에 추가했어요" else "저장했어요")
             go(editBack)
@@ -1762,7 +1767,7 @@ class MainActivity : Activity() {
     }
 
     /** 출발(파란 점) / 도착(빨간 점) 두 줄 */
-    private fun addressBox(c: CallInfo, oneLine: Boolean = false) = LinearLayout(this).apply {
+    private fun addressBox(c: CallInfo, oneLine: Boolean = false, showRecv: Boolean = false) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(0, dp(4), 0, dp(4))
         val o = c.originDisplay.ifEmpty { c.originRaw.replace('\n', ' ') }.ifEmpty { "(없음)" }
@@ -1772,6 +1777,8 @@ class MainActivity : Activity() {
                 if (oneLine) { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(5), 0, dp(5)) }
             })
         }
+        // 콜 받은 곳 (내 위치)
+        if (showRecv && c.recvArea.isNotEmpty()) addView(text("📍 ${c.recvArea}에서 받음", 13f, grey).apply { maxLines = 1; setPadding(0, dp(3), 0, dp(2)) })
     }
 
     /** 맨 앞 ● 만 색칠 */

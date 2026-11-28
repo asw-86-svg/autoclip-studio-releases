@@ -31,10 +31,10 @@ class ScreenshotTest {
         with(Store) { ctx.monthFixed = 300000; ctx.dayFixed = 10000; ctx.dayStartHour = 0; ctx.workStart = now - 5 * 3600_000L }
         Store.upsertTrip(ctx, Store.Trip(
             id = 1L, time = now, origin = "인계동 포포인츠 바이 쉐라톤 수원", dest = "경기 수원 영통구 망포동 힐스테이트영통아파트",
-            program = "카카오대리", fare = 16800, commission = 3360, callKey = "k1",
+            program = "카카오대리", fare = 16800, commission = 3360, callKey = "k1", recvArea = "수원시 팔달구 인계동",
         ))
         Store.setCurrent(ctx, CallInfo("로지", "탁송)매송고색로882", "강원 춘천시 석사동)춘천시 스무숲3길 6/톨포",
-            listOf("경기 수원시 권선구 매송고색로 882"), listOf("춘천시 스무숲3길 6"), "55000원", pkg = "com.logi.test", recommended = true))
+            listOf("경기 수원시 권선구 매송고색로 882"), listOf("춘천시 스무숲3길 6"), "55000원", pkg = "com.logi.test", recommended = true, recvArea = "수원시 권선구 고색동", recvLat = 37.25, recvLng = 126.98))
         Store.upsertTrip(ctx, Store.Trip(id = 2L, time = now - 3600_000L, origin = "서천동 남촌홍어", dest = "인계동 수원센트럴아이파크자이", program = "카카오대리", fare = 22400, commission = 4480, callKey = "k2"))
         Store.deleteTrip(ctx, 2L)
         Store.upsertTrip(ctx, Store.Trip(id = 3L, time = now - 600_000L, origin = "고덕동 에이스퍼스트고덕", dest = "경기 오산시 누읍로 20",
