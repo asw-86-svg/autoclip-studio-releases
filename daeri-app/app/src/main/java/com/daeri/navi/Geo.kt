@@ -23,6 +23,31 @@ object Geo {
      *                  길안내에는 false (엉뚱한 동네 한가운데로 안내하지 않게)
      */
     fun resolve(ctx: Context, queries: List<String>, allowArea: Boolean = false): Pt? {
+        // 전에 찾은 주소면 저장해 둔 위치를 바로 (인터넷 안 씀)
+        val pk = queries.take(3).joinToString("|")
+        if (pk.isNotBlank()) saved(ctx, pk)?.let { return it }
+        val found = resolveNet(ctx, queries, allowArea)
+        if (found != null && pk.isNotBlank() && !found.label.endsWith("(대략)")) save(ctx, pk, found)
+        return found
+    }
+
+    // ---- 찾은 위치 저장 (휴대폰 안, 최근 800개) ----
+    private val saveLock = Any()
+    private fun gp(ctx: Context) = ctx.getSharedPreferences("geo", Context.MODE_PRIVATE)
+    private fun saved(ctx: Context, k: String): Pt? = runCatching {
+        val o = JSONObject(gp(ctx).getString(k, null) ?: return null)
+        Pt(o.getDouble("lat"), o.getDouble("lng"), o.optString("label"), o.optString("q"))
+    }.getOrNull()
+    private fun save(ctx: Context, k: String, p: Pt) = synchronized(saveLock) {
+        val prefs = gp(ctx)
+        val e = prefs.edit().putString(k, JSONObject().put("lat", p.lat).put("lng", p.lng).put("label", p.label).put("q", p.query).put("t", System.currentTimeMillis()).toString())
+        if (prefs.all.size > 800) {
+            prefs.all.entries.sortedBy { runCatching { JSONObject(it.value as String).optLong("t") }.getOrDefault(0L) }.take(200).forEach { e.remove(it.key) }
+        }
+        e.apply()
+    }
+
+    private fun resolveNet(ctx: Context, queries: List<String>, allowArea: Boolean): Pt? {
         val key = ctx.kakaoKey.trim()
         // "고덕동"처럼 여러 곳에 있는 이름은 지금 내 위치 근처(약 35km)부터 찾는다
         val near = Loc.lastPt(ctx)

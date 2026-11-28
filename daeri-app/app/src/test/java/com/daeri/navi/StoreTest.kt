@@ -142,4 +142,13 @@ class StoreTest {
         Store.setCurrent(ctx, a.copy(capturedAt = now + 60_000))   // 같은 콜을 또 읽음 → 처음 받은 시각 유지
         assertEquals(listOf("C동", "B동", "A동"), Store.history(ctx).map { it.originRaw })
     }
+
+    @Test fun geoCacheIsReusedWithoutNetwork() {
+        // 저장해 둔 위치는 인터넷 없이 바로
+        val prefs = ctx.getSharedPreferences("geo", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putString("가락동 다농마트", org.json.JSONObject().put("lat", 37.49).put("lng", 127.11).put("label", "다농마트").put("q", "가락동 다농마트").toString()).commit()
+        val p = Geo.resolve(ctx, listOf("가락동 다농마트"))!!
+        assertEquals(37.49, p.lat, 0.0001)
+        assertEquals("다농마트", p.label)
+    }
 }

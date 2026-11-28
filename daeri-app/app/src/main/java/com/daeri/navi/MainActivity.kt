@@ -584,6 +584,11 @@ class MainActivity : Activity() {
      * 지도 핀 옆 글씨 (카카오 콜카드처럼): 출발 "도보 714m(약12분)" 또는 "🚌 약 35분", 도착 "약 23분 운행".
      * 콜카드에 적힌 값이 있으면 그대로, 없으면 내 위치·주소로 계산. 백그라운드에서 호출.
      */
+    /** 인터넷 없이 바로 쓸 수 있는 시간 표시 (콜카드에 적힌 값) */
+    private fun pinInfoQuick(c: CallInfo): Pair<String, String> =
+        (if (c.walkMin in 1..Route.WALK_LIMIT_MIN) "도보 ${dist((c.walkKm * 1000).toInt())}(약${c.walkMin}분)" else "") to
+            (if (c.driveMin > 0) "약 ${c.driveMin}분 운행" else "")
+
     private fun pinInfo(c: CallInfo, o: Geo.Pt?, d: Geo.Pt?, here: Geo.Pt?): Pair<String, String> {
         val oInfo = if (o != null) originInfo(c, o, here) else ""
         val dInfo = when {
@@ -734,17 +739,31 @@ class MainActivity : Activity() {
         val dark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         web.loadUrl("https://$host/assets/map.html?dark=" + (if (dark) "1" else "0") + kakaoJsKey.takeIf { it.isNotBlank() }?.let { "&kakao=" + Uri.encode(it) }.orEmpty())
         Thread {
-            val o = Geo.resolve(this, c.originQueries)
-            val d = Geo.resolve(this, c.destQueries)
+            // 출발·도착을 동시에 찾는다 (전에 찾은 주소는 저장된 위치로 바로)
+            var dRes: Geo.Pt? = null
+            val dThread = Thread { dRes = runCatching { Geo.resolve(this, c.destQueries) }.getOrNull() }.apply { start() }
+            val o = runCatching { Geo.resolve(this, c.originQueries) }.getOrNull()
+            dThread.join()
+            val d = dRes
             fun js(p: Geo.Pt?) = if (p == null) "null,null" else "${p.lat},${p.lng}"
             // 못 찾았으면 이유(카카오 키 오류 등)를 지도에 글자로
             val why = if (o == null || d == null) Geo.lastError.replace("\\", "").replace("'", "") else ""
             fun q(t: String) = "'" + t.replace("\\", "").replace("'", "").replace("\n", " ") + "'"
-            val (oInfo, dInfo) = pinInfo(c, o, d, Loc.lastPt(this))
-            val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })},${q(oInfo)},${q(dInfo)});"
+            // 핀부터 바로 찍고, 걸리는 시간(길찾기)은 계산되는 대로 붙인다
+            val quick = pinInfoQuick(c)
+            val call = "setPoints(${js(o)},${js(d)},'$why',${q(c.originDisplay.ifEmpty { c.originRaw })},${q(c.destDisplay.ifEmpty { c.destRaw })},${q(quick.first)},${q(quick.second)});"
             runOnUiThread {
                 if (isFinishing || callWeb !== web) return@runOnUiThread
                 if (loaded) web.evaluateJavascript(call, null) else pending = (pending ?: "") + call
+                // 핀을 보낸 다음에 시간 계산 (순서가 뒤바뀌지 않게)
+                Thread {
+                    val (oInfo, dInfo) = pinInfo(c, o, d, Loc.lastPt(this))
+                    runOnUiThread {
+                        if (callWeb !== web) return@runOnUiThread
+                        val u = "updateInfo('o',${q(oInfo)});updateInfo('d',${q(dInfo)});"
+                        if (loaded) web.evaluateJavascript(u, null) else pending = (pending ?: "") + u
+                    }
+                }.start()
                 // 실시간 내 위치: 지도에 파란 점 + 출발지까지 시간 다시 계산 (100m 넘게 움직였거나 1분 지나면)
                 stopWatch?.invoke()
                 var lastCalc: Geo.Pt? = null; var lastAt = 0L

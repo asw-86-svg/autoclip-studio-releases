@@ -267,6 +267,11 @@ class CallReaderService : AccessibilityService() {
 
     /** 콜 받은 곳 = 콜을 읽은 순간의 내 위치 → 동네 이름으로 저장 */
     private fun saveRecvLoc(call: CallInfo) {
+        // 콜 상세를 열면 바로 핀이 찍히도록 출발·도착 위치를 미리 찾아 둔다 (찾은 위치는 저장됨)
+        bg.post {
+            runCatching { Geo.resolve(this, call.originQueries) }
+            runCatching { Geo.resolve(this, call.destQueries) }
+        }
         Loc.current(this) { here ->
             if (here == null) return@current
             bg.post {
