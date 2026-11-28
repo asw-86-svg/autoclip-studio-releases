@@ -43,7 +43,7 @@ class ScreenshotTest {
 
     private fun shot(name: String, open: String, h: Int = 2340, extra: (Intent) -> Unit = {}) {
         assumeTrue(System.getenv("SCREENSHOTS") == "1")
-        if (name != "call_kakao" && name != "call_long") seed()
+        if (name !in setOf("call_kakao", "call_long", "call_resv")) seed()
         val intent = Intent(RuntimeEnvironment.getApplication(), MainActivity::class.java).putExtra("open", open)
         extra(intent)
         val act = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
@@ -98,6 +98,16 @@ class ScreenshotTest {
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
             listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
         shot("call_kakao", "call", 2700)
+    }
+
+    /** 로지 예약 탁송 콜 */
+    @Test fun callResv() {
+        assumeTrue(System.getenv("SCREENSHOTS") == "1")
+        val ctx = RuntimeEnvironment.getApplication()
+        val c = CallParser.parse(listOf("171", "2:19", "현금100K", "탁", "11/30(월)18:00)30일18시-19시출발/1톤스틱)부안군번영로57-1",
+            "(진주시)톨포]진주향양로75번길14", "닫기", "수락"), "로지", allowFreeText = false)!!
+        Store.setCurrent(ctx, c.copy(pkg = "com.logi"))
+        shot("call_resv", "call", 2700)
     }
 
     /** 긴 주소는 잘리지 않고 두 줄로 */

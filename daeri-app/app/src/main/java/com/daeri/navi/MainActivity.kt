@@ -525,6 +525,10 @@ class MainActivity : Activity() {
                 })
             })
 
+            // 예약 콜이면 날짜·시간·메모
+            c.notes.lines().firstOrNull { it.startsWith("[예약]") }?.let { r ->
+                addView(text("🗓 예약 " + r.removePrefix("[예약]").trim(), 14f, 0xFFF5A623.toInt(), bold = true).apply { setPadding(0, dp(10), 0, 0) })
+            }
             if (c.recvArea.isNotEmpty()) addView(text("📍 콜 받은 곳: ${c.recvArea}", 13f, grey).apply { setPadding(0, dp(10), 0, 0) })
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))

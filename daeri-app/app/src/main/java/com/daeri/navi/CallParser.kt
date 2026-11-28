@@ -109,10 +109,34 @@ object CallParser {
         val walkMin = walk?.groupValues?.get(3)?.toIntOrNull() ?: 0
         val walkKm = walk?.let { m -> (m.groupValues[1].toDoubleOrNull() ?: 0.0) * if (m.groupValues[2].lowercase() == "m") 0.001 else 1.0 } ?: 0.0
         val driveMin = lines.firstNotNullOfOrNull { Regex("""약\s*(\d+)\s*분\s*운행""").find(it) }?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        // 로지 등 목록·팝업의 초록 '탁' 표시 = 탁송 콜
+        val takMark = lines.any { norm(it) == "탁" || norm(it) == "(탁)" || norm(it) == "탁송" }
         return parseAll(lines, source, allowFreeText)?.let {
+            // 예약 탁송 "11/30(월)18:00)30일18시-19시출발/1톤스틱)부안군번영로57-1" → 앞의 예약 내용은 메모로
+            val resv = listOf(it.originRaw, it.destRaw).mapNotNull { a -> reservation(a)?.second }.firstOrNull()
+            val extra = listOfNotNull(if (takMark) "[탁송]" else null, resv?.let { r -> "[예약] $r" })
             it.copy(recommended = it.recommended || rec, partner = it.partner || partner,
-                walkMin = walkMin, walkKm = walkKm, driveMin = driveMin)
+                walkMin = walkMin, walkKm = walkKm, driveMin = driveMin,
+                notes = (listOf(it.notes) + extra).filter { n -> n.isNotBlank() }.joinToString("\n"))
         }
+    }
+
+    private val GLUED_REGION = Regex("""([가-힣]{1,4}(?:시|군|구|읍|면))(?=[가-힣]{2,}(?:로|길)\s*\d)""")
+
+    // ---------- 예약 콜: "11/30(월)18:00)메모/메모)주소" ----------
+    private val RESV = Regex("""^\s*(\d{1,2}/\d{1,2})\s*\(([월화수목금토일])\)\s*(\d{1,2}:\d{2})\s*\)""")
+
+    /** 예약 콜이면 (주소 부분, "11/30(월) 18:00 · 메모") — 아니면 null */
+    fun reservation(raw: String): Pair<String, String>? {
+        val m = RESV.find(raw) ?: return null
+        val rest = raw.substring(m.range.last + 1)
+        // "30일18시-19시출발/1톤스틱)부안군번영로57-1" → '/' 와 ')' 로 나눠서, 번지가 있는 마지막 조각이 주소
+        val segs = rest.split('/', ')').map { it.trim() }.filter { it.isNotEmpty() }
+        val idx = segs.indexOfLast { g -> g.any { it in '가'..'힣' } && Regex("""\d+(-\d+)?\s*$""").containsMatchIn(g) && !Regex("""^\d+일|출발$|\d+시""").containsMatchIn(g) }
+            .takeIf { it >= 0 } ?: (segs.size - 1)
+        if (idx < 0) return null
+        val note = (listOf("${m.groupValues[1]}(${m.groupValues[2]}) ${m.groupValues[3]}") + segs.subList(0, idx)).joinToString(" · ")
+        return segs.subList(idx, segs.size).joinToString(" ") to note
     }
 
     private fun parseAll(lines: List<String>, source: String, allowFreeText: Boolean): CallInfo? {
@@ -393,7 +417,9 @@ object CallParser {
         }.toList()
 
     // ---------- 주소 정리: 지도 검색에 쓸 후보를 좋은 순서대로 ----------
-    fun candidates(raw: String): List<String> {
+    fun candidates(raw0: String): List<String> {
+        // "부안군번영로57-1", "안성시죽산면칠장로37" 처럼 붙어 있는 시·군·구·읍·면을 띄운다
+        val raw = (reservation(raw0)?.first ?: raw0).replace(GLUED_REGION, "$1 ")
         val s = preclean(raw)
         if (s.isEmpty()) return emptyList()
         // "경기 수원 영통구 영통동 경기 수원시 영통구 매영로 366" 처럼 시·도가 두 번 나오면 뒤쪽(더 자세한) 주소를 먼저

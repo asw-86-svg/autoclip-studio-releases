@@ -359,6 +359,20 @@ class CallParserTest {
             "운행시간", "01:23 ~ 01:59", "총 수입", "32,000원"), "카카오T 대리", allowFreeText = false))
     }
 
+    @Test fun 로지_예약탁송_팝업() {
+        val c = CallParser.parse(listOf("171", "2:19", "현금100K", "탁", "11/30(월)18:00)30일18시-19시출발/1톤스틱)부안군번영로57-1",
+            "(진주시)톨포]진주향양로75번길14", "닫기", "수락"), "로지", allowFreeText = false)!!
+        assertTrue(c.isTakson)
+        assertEquals("부안군 번영로 57-1", c.originQueries.first())
+        assertEquals("진주시 진주향양로75번길 14", c.destQueries.first())
+        assertTrue("[예약] 11/30(월) 18:00 · 30일18시-19시출발 · 1톤스틱" in c.notes)
+    }
+
+    @Test fun 예약콜_주소만() {
+        assertEquals("기흥구 기곡로 27", CallParser.candidates("12/02(수)09:00)법후)2일09시출/신차/기흥구기곡로27").first())
+        assertEquals("안성시 죽산면 칠장로 37", CallParser.candidates("12/02(수)10:00)2일오전중출/안성시죽산면칠장로37").first())
+    }
+
     @Test fun 콜화면_판별() {
         assertTrue(CallParser.looksLikeCall("출발지\n...\n도착지"))
         assertTrue(CallParser.looksLikeCall("배정 완료"))
