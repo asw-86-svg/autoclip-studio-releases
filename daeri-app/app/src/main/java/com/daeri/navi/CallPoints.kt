@@ -78,7 +78,7 @@ object CallPoints {
     fun csv(ctx: Context): String {
         val f = java.text.SimpleDateFormat("yyyy-MM-dd,HH:mm,E", java.util.Locale.KOREA)
         return buildString {
-            append("날짜,시각,요일,받은곳,받은곳위도,받은곳경도,출발동네,출발위도,출발경도,요금,프로그램,종류,수락\n")
+            append("날짜,시각,요일,대기위치,대기위치위도,대기위치경도,출발동네,출발위도,출발경도,요금,프로그램,종류,수락\n")
             all(ctx).forEach { p ->
                 append(f.format(java.util.Date(p.at))).append(',')
                 append(p.recvArea).append(',').append(p.recvLat).append(',').append(p.recvLng).append(',')

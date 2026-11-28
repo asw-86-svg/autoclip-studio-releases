@@ -554,7 +554,7 @@ class MainActivity : Activity() {
             c.notes.lines().firstOrNull { it.startsWith("[예약]") }?.let { r ->
                 addView(text("🗓 예약 " + r.removePrefix("[예약]").trim(), 13f, 0xFFF5A623.toInt(), bold = true).apply { setPadding(0, dp(6), 0, 0) })
             }
-            if (c.recvArea.isNotEmpty()) addView(text("📍 콜 받은 곳: ${c.recvArea}", 12f, grey).apply { setPadding(0, dp(6), 0, 0) })
+            if (c.recvArea.isNotEmpty()) addView(text("📍 대기위치: ${c.recvArea}", 12f, grey).apply { setPadding(0, dp(6), 0, 0) })
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
@@ -1133,7 +1133,7 @@ class MainActivity : Activity() {
                 if (t.origin.isNotEmpty()) addView(text(dot(blue, "●  ${t.origin}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 15f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                if (t.recvArea.isNotEmpty()) addView(text("📍 ${t.recvArea}에서 받음", 13f, grey).apply { setPadding(0, dp(4), 0, 0) })
+                if (t.recvArea.isNotEmpty()) addView(text("📍 대기위치: ${t.recvArea}", 13f, grey).apply { setPadding(0, dp(4), 0, 0) })
                 addView(totalsRow(t.income, t.expense, showNet = false))
                 addView(row(listOf(
                     button("수정", innerBg) { openEditor(t) },
@@ -1194,7 +1194,7 @@ class MainActivity : Activity() {
                     if (t.via.isNotEmpty()) addView(text(dot(0xFFF5A623.toInt(), "●  ${t.via}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                     if (t.dest.isNotEmpty()) addView(text(dot(red, "●  ${t.dest}"), 14f, white).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                     if (t.memo.isNotEmpty()) addView(text("📝 ${t.memo}", 13f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                    if (t.recvArea.isNotEmpty()) addView(text("📍 ${t.recvArea}에서 받음", 13f, grey).apply { maxLines = 1 })
+                    if (t.recvArea.isNotEmpty()) addView(text("📍 대기위치: ${t.recvArea}", 13f, grey).apply { maxLines = 1 })
                 })
             }
             if (found.size > searchShown) results.addView(button("더 보기 (${found.size - searchShown}개 남음)", innerBg) { searchShown += 50; show() })
@@ -1352,7 +1352,7 @@ class MainActivity : Activity() {
             addView(formRow("요금", fare))
             addView(formRow("프로그램", programRow))
             addView(formRow("종류", kindRow))
-            if (!t?.recvArea.isNullOrEmpty()) addView(formRow("콜 받은 곳", text("📍 ${t!!.recvArea}", 15f, white).apply { setPadding(dp(4), dp(12), 0, dp(12)) }))
+            if (!t?.recvArea.isNullOrEmpty()) addView(formRow("대기위치", text("📍 ${t!!.recvArea}", 15f, white).apply { setPadding(dp(4), dp(12), 0, dp(12)) }))
             addView(formDivider())
             addView(formRow("경유비", row(listOf(viaFee, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(viaFee, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(viaFee, 5000) }), weights = listOf(1.6f, 1f, 1f))))
             addView(formRow("팁", row(listOf(tip, smallButton("+1000", 0xFF1F3354.toInt(), blue) { add(tip, 1000) }, smallButton("+5000", 0xFF1F3354.toInt(), blue) { add(tip, 5000) }), weights = listOf(1.6f, 1f, 1f))))
@@ -1619,7 +1619,7 @@ class MainActivity : Activity() {
             addView(text("일지 ${all.count { it.confirmed }}건 · 일지에 안 넣은 자동운행기록 ${all.count { !it.confirmed }}건 · 휴지통 ${Store.trash(this@MainActivity).size}건", 14f, 0xFF7FB2FF.toInt()))
             addView(text("운행일지가 바뀔 때마다 바뀌기 전 상태를 자동으로 백업해요 (30일 보관).", 12f, grey))
             val pts = CallPoints.all(this@MainActivity)
-            addView(text("📍 콜 포인트 기록 ${pts.size}건 (받은 곳 ${pts.count { it.recvArea.isNotEmpty() }}건) — 받은 콜 목록을 지워도 남아요", 13f, 0xFF7FB2FF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
+            addView(text("📍 콜 포인트 기록 ${pts.size}건 (대기위치 ${pts.count { it.recvArea.isNotEmpty() }}건) — 받은 콜 목록을 지워도 남아요", 13f, 0xFF7FB2FF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
             addView(button("백업에서 되살리기", innerBg) {
                 val list = Store.backups(this@MainActivity)
                 if (list.isEmpty()) { toast("아직 백업이 없어요"); return@button }
@@ -1869,7 +1869,7 @@ class MainActivity : Activity() {
             })
         }
         // 콜 받은 곳 (내 위치)
-        if (showRecv && c.recvArea.isNotEmpty()) addView(text("📍 ${c.recvArea}에서 받음", 13f, grey).apply { maxLines = 1; setPadding(0, dp(3), 0, dp(2)) })
+        if (showRecv && c.recvArea.isNotEmpty()) addView(text("📍 대기위치: ${c.recvArea}", 13f, grey).apply { maxLines = 1; setPadding(0, dp(3), 0, dp(2)) })
     }
 
     /** 맨 앞 ● 만 색칠 */
