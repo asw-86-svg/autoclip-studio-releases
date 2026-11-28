@@ -558,20 +558,21 @@ class MainActivity : Activity() {
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
-            // 맨 아래: 왼쪽 출발지 / 오른쪽 도착지 (스크롤 없이 한눈에)
-            addView(LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                setPadding(0, dp(10), 0, 0)
-                addView(addrCol("출발지", c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue,
-                    navBtn(MapLauncher.KAKAO, "🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
-                    navBtn(MapLauncher.NAVER, "🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
-                ) { callWeb?.evaluateJavascript("focusPoint('o')", null) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                addView(View(this@MainActivity).apply { setBackgroundColor(line) }, LinearLayout.LayoutParams(dp(1), MATCH_PARENT).apply { leftMargin = dp(10); rightMargin = dp(10) })
-                addView(addrCol("도착지", c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red,
-                    navBtn(MapLauncher.KAKAO, "🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
-                    navBtn(MapLauncher.NAVER, "🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) },
-                ) { callWeb?.evaluateJavascript("focusPoint('d')", null) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-            })
+            // 맨 아래: 왼쪽 출발지 / 오른쪽 도착지 — 줄마다 나란히 (이름표 / 주소 / 버튼), 빈 칸 없이 촘촘하게
+            fun pair(left: View, right: View, top: Int) = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(top), 0, 0)
+                addView(left, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
+                addView(right, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
+            }
+            fun addrText(a: String) = text(a.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }, 15f, white, bold = true).apply { maxLines = 3 }
+            addView(pair(text(dot(blue, "●  출발지"), 12f, blue, bold = true), text(dot(red, "●  도착지"), 12f, red, bold = true), 8))
+            addView(pair(addrText(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }), addrText(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }), 2))
+            addView(pair(
+                navGroup(blue, navBtn(MapLauncher.KAKAO, "🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
+                    navBtn(MapLauncher.NAVER, "🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) }) { callWeb?.evaluateJavascript("focusPoint('o')", null) },
+                navGroup(red, navBtn(MapLauncher.KAKAO, "🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
+                    navBtn(MapLauncher.NAVER, "🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) }) { callWeb?.evaluateJavascript("focusPoint('d')", null) },
+                6))
         })
     }
 
@@ -634,6 +635,20 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
     }
 
+
+    /** [⌖][카카오][네이버] 작은 버튼 묶음 — 넓은 화면에서도 벌어지지 않게 칸 크기 고정, 왼쪽 정렬 */
+    private fun navGroup(color: Int, vararg btns: View, onFocus: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START or Gravity.CENTER_VERTICAL
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = rounded(innerBg, 10)
+            addView(TextView(this@MainActivity).apply {
+                text = "⌖"; textSize = 18f; setTextColor(color); gravity = Gravity.CENTER
+                setOnClickListener { onFocus() }; contentDescription = "지도에서 보기"
+            }, LinearLayout.LayoutParams(dp(44), dp(34)))
+            btns.forEach { addView(it, LinearLayout.LayoutParams(dp(48), dp(34))) }
+        }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+    }
 
     /** 한 칸: "● 출발지" / 주소(최대 3줄, 낱말 단위) / [⌖][카카오][네이버] */
     private fun addrCol(label: String, addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
