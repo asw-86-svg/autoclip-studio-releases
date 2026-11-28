@@ -125,10 +125,7 @@ class CallReaderService : AccessibilityService() {
                 event.text?.forEach { words += it.toString() }
                 event.contentDescription?.let { words += it.toString() }
                 runCatching { event.source?.let { collect(it, words, 0, intArrayOf(0)) } }
-                val n = words.map { it.replace(Regex("""\s+"""), "") }
-                // 버튼 하나를 누른 경우만 (카드 전체를 누르면 안쪽에 [수락] 글자가 있어도 무시)
-                // 버튼 글자가 수락 버튼 이름과 '정확히' 같을 때만 (확인·화면 글자로 짐작하지 않음)
-                if (n.size <= 2 && n.any { it in ACCEPT_WORDS }) bg.post { acceptCurrent(pkg, "수락 버튼") }
+                bg.post { handleClick(pkg, words) }
             }
             schedule(450L)
             return
@@ -230,6 +227,21 @@ class CallReaderService : AccessibilityService() {
             val texts = ArrayList<String>()
             runCatching { collect(root, texts, 0, intArrayOf(0)) }
             if (texts.isEmpty()) continue
+            if (handleScreen(pkg, texts)) return
+        }
+    }
+
+    /** 수락 버튼을 누른 것 (클릭 글자) */
+    internal fun handleClick(pkg: String, words: List<String>) {
+        val n = words.map { it.replace(Regex("""\s+"""), "") }
+        // 버튼 하나를 누른 경우만 (카드 전체를 누르면 안쪽에 [수락] 글자가 있어도 무시)
+        // 버튼 글자가 수락 버튼 이름과 '정확히' 같을 때만 (확인·화면 글자로 짐작하지 않음)
+        if (n.size <= 2 && n.any { it in ACCEPT_WORDS }) acceptCurrent(pkg, "수락 버튼")
+    }
+
+    /** 대리 앱 화면 한 장의 글자를 처리. true = 이번 읽기는 여기서 끝 */
+    internal fun handleScreen(pkg: String, texts: List<String>): Boolean {
+        run {
             val joined = texts.joinToString("\n")
             val looks = CallParser.looksLikeCall(joined)
             Store.addDump(this, appName(pkg), texts)
@@ -245,16 +257,16 @@ class CallReaderService : AccessibilityService() {
             if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
             // 카카오 '배정 완료' 화면인데 주소를 못 읽었으면: 방금 본 같은 앱 콜을 '수락'으로 (확실한 배정 화면 글자일 때만)
             val assignedScreen = "배정완료" in n && ("고객과통화" in n || "도착알림" in n || "고객과메시지" in n)
-            if (!looks) { if (assignedScreen) acceptCurrent(pkg, "배정 완료 화면"); continue }
+            if (!looks) { if (assignedScreen) acceptCurrent(pkg, "배정 완료 화면"); return false }
             val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg)
             if (parsed == null || parsed.originRaw.isBlank() || parsed.destRaw.isBlank()) {
                 if (assignedScreen) { acceptCurrent(pkg, "배정 완료 화면"); status("⚠️ 배정 완료 화면 주소를 못 읽어 방금 콜로 기록") }
-                continue
+                return false
             }
             // 자동배차 화면(로지 'N초 후 자동취소', I-Driver 'N초 자동배차 중')은 취소·거부 안 하면 배차 → 바로 기록
             val call = if (parsed.autoDispatch) parsed.copy(accepted = true) else parsed
             // 콜창을 닫은 뒤 나오는 목록·메뉴 화면 글자로 덮어쓰지 않도록 출발·도착 둘 다 있어야 새 콜
-            if (call.originRaw.isBlank() || call.destRaw.isBlank()) continue
+            if (call.originRaw.isBlank() || call.destRaw.isBlank()) return false
             val cur = Store.current(this)
             if (call.key == cur?.key && call.accepted && !cur.accepted) {
                 Store.setCurrent(this, cur.copy(accepted = true, fare = call.fare.ifEmpty { cur.fare }, deposit = call.deposit.ifEmpty { cur.deposit }))
@@ -263,13 +275,13 @@ class CallReaderService : AccessibilityService() {
             if (call.key == cur?.key) {
                 // 같은 콜: 5분 유지 타이머 다시 시작, 말풍선이 숨겨져 있으면 다시 띄운다
                 if (bubbleFor(pkg)) handler.post { keepBubble(); if (bubble == null) { showBubble(); bubbleEta(call) } }
-                return
+                return true
             }
             Store.setCurrent(this, call)
             saveRecvLoc(call)
             status("✅ ${appName(pkg)} 콜 읽음: ${call.originDisplay} → ${call.destDisplay}")
             if (bubbleFor(pkg)) handler.post { showBubble(); pulse(); expandedUntil = System.currentTimeMillis() + 10_000; bubbleEta(call); keepBubble() }
-            return
+            return true
         }
     }
 
