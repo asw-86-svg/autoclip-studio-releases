@@ -567,26 +567,20 @@ class MainActivity : Activity() {
             // 지도: 출발(파란 핀) / 도착(빨간 핀)
             addView(mapView(c))
 
-            // 출발지: 주소 옆 [⌖][카카오][네이버] — 대중교통 길안내
-            addView(space(12))
-            addView(text(dot(blue, "●  출발지"), 13f, blue, bold = true))
-            addView(addrRow(c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue,
-                navBtn(MapLauncher.KAKAO, "🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
-                navBtn(MapLauncher.NAVER, "🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
-            ) { callWeb?.evaluateJavascript("focusPoint('o')", null) })
-
-            addView(View(this@MainActivity).apply {
-                setBackgroundColor(line)
-                layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1)).apply { topMargin = dp(12); bottomMargin = dp(12) }
+            // 맨 아래: 왼쪽 출발지 / 오른쪽 도착지 (스크롤 없이 한눈에)
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(10), 0, 0)
+                addView(addrCol("출발지", c.originDisplay.ifEmpty { c.originRaw }.ifEmpty { "(없음)" }, blue,
+                    navBtn(MapLauncher.KAKAO, "🚌", "카카오", kakaoYellow, black) { navigate(App.KAKAO, c.originQueries, Mode.TRANSIT) },
+                    navBtn(MapLauncher.NAVER, "🚌", "네이버", naverGreen, white) { navigate(App.NAVER, c.originQueries, Mode.TRANSIT) },
+                ) { callWeb?.evaluateJavascript("focusPoint('o')", null) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(View(this@MainActivity).apply { setBackgroundColor(line) }, LinearLayout.LayoutParams(dp(1), MATCH_PARENT).apply { leftMargin = dp(10); rightMargin = dp(10) })
+                addView(addrCol("도착지", c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red,
+                    navBtn(MapLauncher.KAKAO, "🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
+                    navBtn(MapLauncher.NAVER, "🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) },
+                ) { callWeb?.evaluateJavascript("focusPoint('d')", null) }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             })
-
-            // 도착지: 주소 옆 [⌖][카카오][네이버] — 출발→도착 자동차 길안내
-            addView(text(dot(red, "●  도착지"), 13f, red, bold = true))
-            addView(addrRow(c.destDisplay.ifEmpty { c.destRaw }.ifEmpty { "(없음)" }, red,
-                navBtn(MapLauncher.KAKAO, "🚗", "카카오", kakaoYellow, black) { fullRoute(App.KAKAO, c) },
-                navBtn(MapLauncher.NAVER, "🚗", "네이버", naverGreen, white) { fullRoute(App.NAVER, c) },
-            ) { callWeb?.evaluateJavascript("focusPoint('d')", null) })
-            addView(text("출발지 🚌 = 대중교통으로 출발지까지 · 도착지 🚗 = 출발→도착 자동차 길안내 · ⌖ = 지도에서 크게", 12f, 0xFF7D7D84.toInt()).apply { setPadding(0, dp(10), 0, 0) })
         })
     }
 
@@ -649,6 +643,26 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { leftMargin = dp(8) })
     }
 
+
+    /** 한 칸: "● 출발지" / 주소(최대 3줄, 낱말 단위) / [⌖][카카오][네이버] */
+    private fun addrCol(label: String, addr: String, color: Int, vararg extra: View, onFocus: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(text(dot(color, "●  $label"), 13f, color, bold = true))
+        val keepWords = addr.split(" ").joinToString(" ") { w -> w.toList().joinToString("\u2060") }
+        // 두 칸의 버튼 줄이 나란히 오도록 주소는 늘 2줄 높이 (길면 3줄)
+        addView(text(keepWords, 15f, white, bold = true).apply { minLines = 2; maxLines = 3; setPadding(0, dp(4), 0, dp(6)) },
+            LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = rounded(innerBg, 12)
+            addView(TextView(this@MainActivity).apply {
+                text = "⌖"; textSize = 22f; setTextColor(color); gravity = Gravity.CENTER
+                setOnClickListener { onFocus() }
+                contentDescription = "지도에서 보기"
+            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            extra.forEach { addView(it, LinearLayout.LayoutParams(0, dp(44), 1f)) }
+        }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+    }
 
     /**
      * 주소 옆 작은 지도앱 버튼 — 휴대폰에 깔린 카카오맵/네이버지도 앱 아이콘 + 오른쪽 아래 작은 🚌/🚗.
@@ -746,7 +760,16 @@ class MainActivity : Activity() {
         return android.widget.FrameLayout(this).apply {
             background = rounded(innerBg, 14)
             clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(540)).apply { topMargin = dp(14) }
+            layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(360)).apply { topMargin = dp(10) }
+            // 화면이 배치되면 남는 높이만큼 지도를 키워서 스크롤 없이 한 화면에 (최소 220)
+            val box = this
+            post {
+                val extra = scroll.height - root.height
+                if (scroll.height > 0) {
+                    val h = (box.height + extra - dp(4)).coerceAtLeast(dp(220))
+                    if (kotlin.math.abs(h - box.height) > dp(4)) box.layoutParams = (box.layoutParams as LinearLayout.LayoutParams).apply { height = h }
+                }
+            }
             addView(web, android.widget.FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         }
     }

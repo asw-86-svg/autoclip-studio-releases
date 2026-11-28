@@ -75,7 +75,7 @@ class ScreenshotTest {
     @Test fun newEditor() = shot("editor_new", "edit", 3900)
     @Test fun day() = shot("day", "day")
     @Test fun home() = shot("home", "home")
-    @Test fun call() = shot("call", "call", 2700)
+    @Test fun call() = shot("call", "call", 2673)
     @Test fun calls() = shot("calls", "calls")
     @Test fun auto() = shot("auto", "auto", 2600)
     @Test fun trash() = shot("trash", "trash")
@@ -97,7 +97,7 @@ class ScreenshotTest {
         }
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "수원시 영통구 영통동 1012-4", "화성시 동탄구 영천동 701-12",
             listOf("수원시 영통구 영통동 1012-4"), listOf("화성시 동탄구 영천동 701-12"), "12,000", pkg = "com.kakao.driver", partner = true))
-        shot("call_kakao", "call", 2700)
+        shot("call_kakao", "call", 2673)
     }
 
     /** 로지 예약 탁송 콜 */
@@ -107,7 +107,7 @@ class ScreenshotTest {
         val c = CallParser.parse(listOf("171", "2:19", "현금100K", "탁", "11/30(월)18:00)30일18시-19시출발/1톤스틱)부안군번영로57-1",
             "(진주시)톨포]진주향양로75번길14", "닫기", "수락"), "로지", allowFreeText = false)!!
         Store.setCurrent(ctx, c.copy(pkg = "com.logi"))
-        shot("call_resv", "call", 2700)
+        shot("call_resv", "call", 2673)
     }
 
     /** 긴 주소는 잘리지 않고 두 줄로 */
@@ -116,7 +116,7 @@ class ScreenshotTest {
         val ctx = RuntimeEnvironment.getApplication()
         Store.setCurrent(ctx, CallInfo("카카오T 대리", "송파구 문정동 르피에드문정오피스텔", "경기 화성시 효행구 봉담읍 화성봉담2그랑드비체아파트",
             listOf("송파구 문정동 르피에드문정오피스텔"), listOf("경기 화성시 효행구 봉담읍 화성봉담2그랑드비체아파트"), "24,000", pkg = "com.kakao.driver"))
-        shot("call_long", "call", 2700)
+        shot("call_long", "call", 2673)
     }
     @Test fun homeAd() {
         Ads.setJson(RuntimeEnvironment.getApplication(), """{"ads":[{"id":"t1","title":"○○ 대리기사 보험","text":"하루 3,000원부터 · 24시간 상담","link":"tel:01000000000","button":"📞 전화"}]}""")
