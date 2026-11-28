@@ -95,7 +95,7 @@ class CallReaderService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
-        if (Store.current(this) != null) showBubble()
+        // 앱을 다시 켰을 때 지난 콜로 빈 '출/도' 말풍선을 띄우지 않는다 (새 콜이 오면 뜸)
     }
 
     override fun onDestroy() {
@@ -326,6 +326,8 @@ class CallReaderService : AccessibilityService() {
     fun bubbleEta(call: CallInfo) {
         bubbleCall = call
         timeLines = emptyList()
+        // 콜 목록에서 열어 띄운 말풍선도 설정한 시간이 지나면 숨김
+        keepBubble()
         renderBubble()
         if (expandedUntil > System.currentTimeMillis()) {
             handler.postDelayed({ renderBubble() }, expandedUntil - System.currentTimeMillis() + 50)
@@ -420,7 +422,8 @@ class CallReaderService : AccessibilityService() {
         val mode = bubbleMode
         // 퇴근 상태(출근 전)면 말풍선을 띄우지 않는다
         if (mode == 2 || detectPaused) { hideBubble(); return }
-        if (bubble == null && Store.current(this) != null) showBubble()
+        // 보이는 시간(10초 등)이 지나 숨긴 말풍선은 대리 앱을 다시 열어도 띄우지 않는다 — 다음 새 콜에서만
+        if (bubble == null && bubbleCall != null) showBubble()
         bubble?.visibility = if (mode == 1 && !fgIsCallApp) View.GONE else View.VISIBLE
     }
 
