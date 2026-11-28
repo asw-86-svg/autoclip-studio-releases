@@ -20,8 +20,13 @@ object Store {
     fun setCurrent(ctx: Context, c: CallInfo?) {
         if (c == null) { p(ctx).edit().remove("current").apply(); return }
         p(ctx).edit().putString("current", toJson(c).toString()).apply()
-        // 받은 콜 목록: 개수 제한 없음 (목록삭제 전까지 전부 보관)
-        writeHistory(ctx, listOf(c) + history(ctx).filter { it.key != c.key })
+        // 받은 콜 목록: 개수 제한 없음 (목록삭제 전까지 전부 보관).
+        // 시간순 고정 — 이미 있는 콜(목록에서 다시 열었거나 같은 콜을 또 읽음)은 제자리에서 내용만 바꾸고 처음 받은 시각 유지
+        val hist = history(ctx)
+        val same = hist.indexOfFirst { it.key == c.key && abs(it.capturedAt - c.capturedAt) < 12 * 3600_000L }
+        val newHist = if (same >= 0) hist.toMutableList().also { it[same] = c.copy(capturedAt = hist[same].capturedAt) }
+                      else listOf(c) + hist
+        writeHistory(ctx, newHist.sortedByDescending { it.capturedAt })
         if (c.accepted) recordAccepted(ctx, c)
         // 콜 포인트 기록 (목록삭제와 상관없이 따로 쌓임)
         runCatching { CallPoints.upsert(ctx, c) }

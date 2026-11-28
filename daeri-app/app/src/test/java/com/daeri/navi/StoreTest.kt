@@ -130,4 +130,16 @@ class StoreTest {
         assertEquals("I-Driver", Store.programName("I-Driver"))
         assertEquals("카카오대리", Store.programName("카카오T 대리"))
     }
+
+    @Test fun 받은_콜_목록은_시간순_고정() {
+        val a = call("A동", "가", "20,000", accepted = false).copy(capturedAt = now - 3_600_000)
+        val b = call("B동", "나", "20,000", accepted = false).copy(capturedAt = now - 1_800_000)
+        val c = call("C동", "다", "20,000", accepted = false).copy(capturedAt = now)
+        Store.setCurrent(ctx, a); Store.setCurrent(ctx, b); Store.setCurrent(ctx, c)
+        assertEquals(listOf("C동", "B동", "A동"), Store.history(ctx).map { it.originRaw })
+        Store.setCurrent(ctx, a)                                   // 맨 아래 콜을 열어봄
+        assertEquals(listOf("C동", "B동", "A동"), Store.history(ctx).map { it.originRaw })
+        Store.setCurrent(ctx, a.copy(capturedAt = now + 60_000))   // 같은 콜을 또 읽음 → 처음 받은 시각 유지
+        assertEquals(listOf("C동", "B동", "A동"), Store.history(ctx).map { it.originRaw })
+    }
 }
