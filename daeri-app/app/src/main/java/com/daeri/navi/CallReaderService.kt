@@ -158,8 +158,10 @@ class CallReaderService : AccessibilityService() {
 
     /** 지금 콜을 '배정'으로 바꾸고 자동운행기록에 넣는다 */
     private fun acceptCurrent(pkg: String, why: String) {
-        val cur = Store.current(this) ?: return
-        if (cur.accepted || cur.pkg != pkg || System.currentTimeMillis() - cur.capturedAt > 10 * 60_000L) return
+        val cur = Store.current(this) ?: run { status("⚠️ 수락($why)을 봤지만 지금 콜이 없어요"); return }
+        if (cur.accepted) return
+        if (cur.pkg != pkg) { status("⚠️ 수락($why)을 봤지만 지금 콜이 다른 앱 콜이에요 (${cur.source})"); return }
+        if (System.currentTimeMillis() - cur.capturedAt > 30 * 60_000L) { status("⚠️ 수락($why)을 봤지만 지금 콜이 30분 넘게 지났어요"); return }
         Store.setCurrent(this, cur.copy(accepted = true))
         status("🚗 ${cur.source} 콜 수락($why) → 자동운행기록에 넣었어요: ${cur.originDisplay} → ${cur.destDisplay}")
     }
@@ -241,8 +243,14 @@ class CallReaderService : AccessibilityService() {
                 }
             }
             if (CANCEL_WORDS.any { it in n }) cancelCurrent(pkg)
-            if (!looks) continue
-            val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg) ?: continue
+            // 카카오 '배정 완료' 화면인데 주소를 못 읽었으면: 방금 본 같은 앱 콜을 '수락'으로 (확실한 배정 화면 글자일 때만)
+            val assignedScreen = "배정완료" in n && ("고객과통화" in n || "도착알림" in n || "고객과메시지" in n)
+            if (!looks) { if (assignedScreen) acceptCurrent(pkg, "배정 완료 화면"); continue }
+            val parsed = CallParser.parse(texts, appName(pkg), allowFreeText = false)?.copy(pkg = pkg)
+            if (parsed == null || parsed.originRaw.isBlank() || parsed.destRaw.isBlank()) {
+                if (assignedScreen) { acceptCurrent(pkg, "배정 완료 화면"); status("⚠️ 배정 완료 화면 주소를 못 읽어 방금 콜로 기록") }
+                continue
+            }
             // 자동배차 화면(로지 'N초 후 자동취소', I-Driver 'N초 자동배차 중')은 취소·거부 안 하면 배차 → 바로 기록
             val call = if (parsed.autoDispatch) parsed.copy(accepted = true) else parsed
             // 콜창을 닫은 뒤 나오는 목록·메뉴 화면 글자로 덮어쓰지 않도록 출발·도착 둘 다 있어야 새 콜

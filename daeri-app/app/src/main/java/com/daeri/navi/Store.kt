@@ -9,7 +9,7 @@ import kotlin.math.abs
 object Store {
     private const val PREFS = "daeri"
     private const val CALLS_FILE = "calls.json"
-    private const val MAX_DUMPS = 10
+    private const val MAX_DUMPS = 40
 
     private fun p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -268,9 +268,9 @@ object Store {
     const val MIN_FARE = 5000
 
     private fun recordAccepted(ctx: Context, c: CallInfo) = synchronized(tripLock) {
-        if (CallParser.won(c.fare) in 1 until MIN_FARE) return
+        if (CallParser.won(c.fare) in 1 until MIN_FARE) { setStatus(ctx, "⛔ 기록 안 함 (요금 ${c.fare} 너무 낮음): ${c.originDisplay}"); return }
         val list = trips(ctx)
-        if (list.any { it.callKey == c.key && abs(it.time - c.capturedAt) < 12 * 3600_000L }) return
+        if (list.any { it.callKey == c.key && abs(it.time - c.capturedAt) < 12 * 3600_000L }) { setStatus(ctx, "ℹ️ 이미 기록된 콜: ${c.originDisplay} → ${c.destDisplay}"); return }
         val fare = CallParser.won(c.fare)
         val deposit = CallParser.won(c.deposit)
         upsertTrip(ctx, Trip(
@@ -399,7 +399,12 @@ object Store {
     fun addDump(ctx: Context, app: String, texts: List<String>) {
         val body = texts.joinToString("\n") { "• " + it.replace("\n", " ⏎ ") }.take(3000)
         val arr = runCatching { JSONArray(p(ctx).getString("dumps", "[]")) }.getOrDefault(JSONArray())
-        if (arr.length() > 0 && arr.getJSONObject(0).optString("body") == body) return
+        // 숫자만 바뀐 같은 화면(카카오 '남은시간 30분 35초' 대기 화면 등)은 한 번만 — 중요한 화면이 밀려나지 않게
+        fun shape(b: String) = b.replace(Regex("""\d+"""), "#")
+        for (i in 0 until minOf(arr.length(), 5)) {
+            val o = arr.getJSONObject(i)
+            if (o.optString("app") == app && shape(o.optString("body")) == shape(body)) return
+        }
         val out = JSONArray().put(JSONObject().put("app", app).put("at", System.currentTimeMillis()).put("body", body))
         for (i in 0 until minOf(arr.length(), MAX_DUMPS - 1)) out.put(arr.getJSONObject(i))
         p(ctx).edit().putString("dumps", out.toString()).apply()
@@ -411,7 +416,14 @@ object Store {
     }.getOrDefault(emptyList())
 
     /** 마지막 읽기 결과 (문제 해결용) */
-    fun setStatus(ctx: Context, msg: String) = p(ctx).edit().putString("status", msg).apply()
+    fun setStatus(ctx: Context, msg0: String) {
+        val msg = if (msg0.firstOrNull()?.isDigit() == true) msg0 else java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.KOREA).format(java.util.Date()) + " " + msg0
+        // 지난 기록도 남긴다 (최근 50줄) — 콜이 왜 기록 안 됐는지 찾을 때 씀
+        val old = p(ctx).getString("statusLog", "").orEmpty()
+        val log = (msg + "\n" + old).lineSequence().take(50).joinToString("\n")
+        p(ctx).edit().putString("status", msg).putString("statusLog", log).apply()
+    }
+    fun statusLog(ctx: Context): String = p(ctx).getString("statusLog", "").orEmpty()
     fun status(ctx: Context): String = p(ctx).getString("status", "").orEmpty()
 
     /** 말풍선 위치를 화면 비율(0~1)로 저장 → 폴드 외부/내부 화면 어디서든 같은 자리 */
